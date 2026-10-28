@@ -24,7 +24,7 @@ extensions.configure<ApplicationExtension> {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.ufoex.materialbook"
+        applicationId = "com.adv247.purebook"
         minSdk = 26
         targetSdk = 36
 
