@@ -55,5 +55,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create v$VERSION PureBook.apk \
-            --title "Faceboost v$VERSION" \
+            --title "PureBook v$VERSION" \
             --generate-notes --target "${{ github.sha }}"
