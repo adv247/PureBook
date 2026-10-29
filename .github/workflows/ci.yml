@@ -154,6 +154,8 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Gradle's output goes to a file (shown only when it fails) so the failing tests can be
+      # named in annotations below; the job log itself is not readable without signing in.
       - name: Run Instrumented Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -166,7 +168,15 @@ jobs:
           disable-animations: true
           script: |
             chmod +x gradlew
-            ./gradlew connectedAndroidTest --stacktrace
+            ./gradlew connectedAndroidTest --stacktrace > instrumented-gradle.log 2>&1 || (tail -n 150 instrumented-gradle.log; exit 1)
+
+      - name: Surface instrumented test failures as annotations
+        if: failure()
+        run: |
+          grep -E ' FAILED$|There were failing tests|What went wrong|Execution failed|INSTRUMENTATION_(RESULT|STATUS): (stack|test|class)=' instrumented-gradle.log 2>/dev/null | cut -c1-300 | head -40 | sed 's/^/::error::/'
+          find app/build -path '*androidTest-results*' -name 'TEST-*.xml' 2>/dev/null | head -5 | while read -r f; do
+            grep -B1 -E '<failure|<error' "$f" | cut -c1-300 | head -20 | sed 's/^/::error::/'
+          done
 
       - name: Upload Instrumented Test Coverage Data
         uses: actions/upload-artifact@v7
