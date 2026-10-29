@@ -39,12 +39,14 @@ class MainViewModel(
         settings: SettingsViewModel
     ) {
         val scripts = listOf(
+            Script(true, R.raw.anti_reload, "anti_reload.js"), // first: later scripts register through its gate
             Script(true, R.raw.scripts, "scripts.js"), // always apply
             Script(settings.messagesDesktop.value, R.raw.messages_tab, "messages_tab.js"),
             Script(settings.removeAds.value, R.raw.adblock, "adblock.js"),
             Script(settings.enableDownloadContent.value, R.raw.download_content, "download_content.js"),
             Script(settings.enableCopyToClipboard.value, R.raw.copy_to_clipboard, "copy_to_clipboard.js"),
             Script(true, R.raw.copy_post_text, "copy_post_text.js"),
+            Script(true, R.raw.text_select, "text_select.js"),
             Script(true, R.raw.link_privacy, "link_privacy.js"),
             Script(true, R.raw.anti_seen, "anti_seen.js"),
             Script(true, R.raw.fb_timer, "fb_timer.js"),
