@@ -80,3 +80,19 @@ test('the per-element URL table does not pin elements: only the last few are tra
     assert.ok(snapshot.byElement.length > 0, 'and still useful');
     assert.ok(snapshot.global.length > 0);
 });
+
+test('the HD video the page announced goes first among the muxed candidates', () => {
+    const { w } = boot();
+    const hd = 'https://video.xx.fbcdn.net/v/hd.mp4?x=1';
+    const video = new FakeMedia();
+    FakeMedia.prototype.play.call(video);
+    w.fetch(videoUrl('progressive_h264-basic-gen2_360p', 'low'));
+    w.__pbHdUrlFor = () => hd;
+    const payload = w.__materialbookPayload(video);
+    assert.equal(payload.progressive[0], hd);
+    assert.equal(payload.progressive.length, 2, 'the player\'s own muxed file stays as a fallback');
+    w.__pbHdUrlFor = () => null;
+    assert.ok(![...w.__materialbookPayload(video).progressive].includes(hd), 'nothing announced: nothing added');
+    delete w.__pbHdUrlFor;
+    assert.equal(w.__materialbookPayload(video).progressive.length, 1, 'media_quality.js absent: unchanged behaviour');
+});

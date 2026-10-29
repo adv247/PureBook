@@ -11,7 +11,7 @@ import com.multiplatform.webview.web.WebViewState
 // once the page has finished loading, which is too late for the first socket and for the handlers
 // Facebook registers up front. Each script guards against a second run, so the bundle's later copy
 // is a no-op.
-private val EARLY_SCRIPTS = intArrayOf(R.raw.anti_reload, R.raw.anti_seen)
+private val EARLY_SCRIPTS = intArrayOf(R.raw.anti_reload, R.raw.anti_seen, R.raw.media_quality)
 
 // Wildcard rules match subdomains only, so the bare domains are listed too.
 private val EARLY_ORIGINS = setOf(
