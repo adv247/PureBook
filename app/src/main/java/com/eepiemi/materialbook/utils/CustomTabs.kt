@@ -1,6 +1,8 @@
 package com.eepiemi.materialbook.utils
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.net.toUri
 
@@ -21,11 +23,16 @@ fun openInCustomTab(context: Context, url: String): Boolean {
     return true
 }
 
-/** The Custom Tab itself, with no cleaning or expanding. False when no browser can show it. */
+/**
+ * The Custom Tab itself, with no cleaning or expanding. False when no browser can show it.
+ * A tab started from a non-Activity context (the application context, when the Activity that
+ * asked for the link has gone away while a short link was being expanded) needs a new task.
+ */
 internal fun launchCustomTab(context: Context, url: String): Boolean = runCatching {
-    CustomTabsIntent.Builder()
+    val tab = CustomTabsIntent.Builder()
         .setShowTitle(true)
         .setShareState(CustomTabsIntent.SHARE_STATE_ON)
         .build()
-        .launchUrl(context, url.toUri())
+    if (context !is Activity) tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    tab.launchUrl(context, url.toUri())
 }.isSuccess
