@@ -12,7 +12,7 @@ import java.util.Locale
 /**
  * app_name is hand-edited across 10 locale strings.xml files on every rebrand.
  * Sweeps all of them so a missed locale fails loudly here instead of shipping
- * half-branded ("Materialbook") in one language.
+ * half-branded (the previous name) in one language.
  */
 @RunWith(AndroidJUnit4::class)
 class LocaleAppNameTest {
@@ -37,23 +37,23 @@ class LocaleAppNameTest {
     }
 
     @Test
-    fun appNameIsAstryxbookInEveryTranslatedLocale() {
+    fun appNameIsPureBookInEveryTranslatedLocale() {
         translatedLocales.forEach { locale ->
             val name = contextFor(locale).getString(R.string.app_name)
             assertTrue(
-                "app_name wrong for locale '$locale': expected to start with \"Astryxbook\" but was \"$name\"",
-                name.startsWith("Astryxbook")
+                "app_name wrong for locale '$locale': expected to start with \"PureBook\" but was \"$name\"",
+                name.startsWith("PureBook")
             )
         }
     }
 
     @Test
-    fun appNameIsAstryxbookInDefaultFallback() {
-        // A locale we have no translation for falls back to the default values/strings.xml.
+    fun appNameIsPureBookInDefaultFallback() {
+        // A locale we have no translation for falls back to the default values/brand_strings.xml.
         val name = contextFor(Locale.forLanguageTag("ja")).getString(R.string.app_name)
         assertTrue(
-            "app_name should start with \"Astryxbook\" but was \"$name\"",
-            name.startsWith("Astryxbook")
+            "app_name should start with \"PureBook\" but was \"$name\"",
+            name.startsWith("PureBook")
         )
     }
 }

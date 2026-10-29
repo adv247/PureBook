@@ -20,7 +20,12 @@
   // have a blob: video.src that cannot be fetched; the actual .mp4 URLs are
   // requested through fetch/XMLHttpRequest and are captured here.
   const capturedMediaUrls = [];
-  const videoUrlByElement = new Map();
+  // Keyed by DOM element, so it must not keep the elements alive: Facebook swaps <video>
+  // nodes in and out, and a Map would hold every detached one (and its buffers) for the
+  // life of the page. recentVideoEls only exists for the debug hook, which cannot iterate a WeakMap.
+  const videoUrlByElement = new WeakMap();
+  const recentVideoEls = [];
+  const MAX_RECENT_VIDEO_ELS = 8;
   let activeVideoEl = null;
   const MEDIA_URL_RE = /\.(mp4|m4v)(\?|$)/i;
 
@@ -64,6 +69,21 @@
     return "unknown";
   };
 
+  // Vertical resolution the URL's encode tag names ("..._720p..."), 0 when it names none.
+  // The player may fetch several representations of one video while it adapts to the
+  // connection; the sharpest one is the one worth saving.
+  const qualityOf = (u) => {
+    const { tag, vtag } = decodeEfg(u);
+    const m = /(\d{3,4})p/i.exec(vtag + " " + tag);
+    return m ? parseInt(m[1], 10) : 0;
+  };
+
+  const trackVideoEl = (el) => {
+    if (typeof WeakRef !== "function") return;
+    recentVideoEls.push(new WeakRef(el));
+    if (recentVideoEls.length > MAX_RECENT_VIDEO_ELS) recentVideoEls.shift();
+  };
+
   const captureMediaUrl = (u) => {
     if (typeof u === "string" && MEDIA_URL_RE.test(u)) {
       capturedMediaUrls.push({ url: u, at: Date.now() });
@@ -73,6 +93,7 @@
         if (!list) {
           list = [];
           videoUrlByElement.set(activeVideoEl, list);
+          trackVideoEl(activeVideoEl);
         }
         list.push({
           url: u,
@@ -369,7 +390,10 @@
       .sort((a, b) => b.at - a.at);
     globalRecent.forEach((e) => push(e.url, classifyMediaUrl(e.url)));
 
-    for (const k of Object.keys(buckets)) buckets[k] = buckets[k].slice(0, 3);
+    // Sharpest first (stable sort: equally sharp ones stay newest first), then keep three.
+    for (const k of Object.keys(buckets)) {
+      buckets[k] = buckets[k].sort((a, b) => qualityOf(b) - qualityOf(a)).slice(0, 3);
+    }
     return buckets;
   };
 
@@ -727,17 +751,20 @@
     currentContentContainer = null;
   };
 
+  // "Open in App" button: a div.fl.ac whose span holds Facebook's private-use icon glyph U+F196C.
+  const OPEN_APP_ICON = '\u{F196C}';
+
   const hideOpenAppButtons = (root = document) => {
         // Find all div[role="button"] elements
         const buttons = root.querySelectorAll('div[role="button"]');
 
         buttons.forEach(button => {
-          // Check if it contains div.fl.ac with a span containing the 󱥬 symbol
+          // Check if it contains div.fl.ac with a span containing the icon glyph
           const flAcDiv = button.querySelector('div.fl.ac');
 
           if (flAcDiv) {
             const span = flAcDiv.querySelector('span');
-            if (span && span.textContent.includes('󱥬')) {
+            if (span && span.textContent.includes(OPEN_APP_ICON)) {
               button.style.display = 'none';
             }
           }
@@ -754,6 +781,20 @@
     } finally {
       isProcessing = false;
     }
+  };
+
+  // Facebook mutates the DOM constantly (feed, counters, hover states). Doing the work for every
+  // mutation batch (selector queries + layout reads) is what made this script a battery and
+  // scroll-jank cost; one pass per quiet quarter second is plenty for a button that only shows
+  // and hides.
+  const PROCESS_DELAY_MS = 250;
+  let processTimer = 0;
+  const scheduleProcess = () => {
+    if (processTimer) return;
+    processTimer = setTimeout(() => {
+      processTimer = 0;
+      processPage();
+    }, PROCESS_DELAY_MS);
   };
 
   // Initialize
@@ -774,7 +815,7 @@
             (mutation.target.tagName === "VIDEO" ||
              mutation.target.tagName === "IMG"))
       );
-      if (hasRelevantChanges) processPage();
+      if (hasRelevantChanges) scheduleProcess();
     });
 
     observer.observe(document.body, {
@@ -803,7 +844,10 @@
       return { kind: k, tag, vtag, url: u.slice(0, 160) };
     };
     const byEl = [];
-    videoUrlByElement.forEach((list, el) => {
+    recentVideoEls.forEach((ref) => {
+      const el = ref.deref();
+      const list = el && videoUrlByElement.get(el);
+      if (!list) return;
       byEl.push({
         src: (el.currentSrc || el.src || "").slice(0, 80),
         items: list.map((e) => ({
@@ -819,4 +863,7 @@
       byElement: byEl
     };
   };
+
+  // Which URLs would be sent for this video, sharpest first (used by the tests).
+  window.__materialbookCandidates = candidatesFor;
 })();

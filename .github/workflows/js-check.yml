@@ -1,0 +1,40 @@
+name: JS checks
+
+# Every res/raw/*.js is concatenated into ONE script that runs inside the WebView, so a single
+# syntax error silently disables every script after it. This workflow syntax-checks each file
+# and runs the logic tests in tests/js, on every PR that touches them.
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/res/raw/**'
+      - 'tests/js/**'
+      - '.github/workflows/js-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/res/raw/**'
+      - 'tests/js/**'
+      - '.github/workflows/js-check.yml'
+
+jobs:
+  js:
+    name: Syntax + logic tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax-check every bundled script
+        run: |
+          set -e
+          for f in app/src/main/res/raw/*.js; do
+            echo "node --check $f"
+            node --check "$f"
+          done
+
+      - name: Logic tests
+        run: node --test tests/js/*.test.js

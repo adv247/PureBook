@@ -38,8 +38,20 @@ jobs:
 
       - name: Run Android Lint
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew :app:lintDebug --stacktrace
+          ./gradlew :app:lintDebug --stacktrace 2>&1 | tee lint-gradle.log
+
+      # The job log is not readable without a login, but annotations are: surface the lint
+      # errors (or Gradle's failure reason) there so a red lint job explains itself.
+      - name: Surface lint problems as annotations
+        if: failure()
+        run: |
+          f=app/build/reports/lint-results-debug.txt
+          if [ -f "$f" ]; then
+            grep -E ': (Error|Fatal): ' "$f" | head -40 | sed 's/^/::error::/'
+          fi
+          grep -E 'What went wrong|Execution failed|error:|FAILED' lint-gradle.log | head -20 | sed 's/^/::error::/'
 
       - name: Upload Android Lint Report
         if: always()
@@ -70,13 +82,19 @@ jobs:
         env:
           VERSION_NAME: ${{ inputs.version_name }}
         run: |
+          set -o pipefail
           chmod +x gradlew
           if [ -n "$VERSION_NAME" ]; then
-            ./gradlew test assembleRelease -PversionNameOverride="$VERSION_NAME" --stacktrace
+            ./gradlew test assembleRelease -PversionNameOverride="$VERSION_NAME" --stacktrace 2>&1 | tee build-gradle.log
           else
-            ./gradlew test assembleRelease --stacktrace
+            ./gradlew test assembleRelease --stacktrace 2>&1 | tee build-gradle.log
           fi
           ls -R app/build/outputs/apk || echo "No APK directory found"
+
+      - name: Surface build/test failures as annotations
+        if: failure()
+        run: |
+          grep -E '^e: |What went wrong|Execution failed|FAILED|AssertionError|error:' build-gradle.log | head -40 | sed 's/^/::error::/'
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v7
@@ -136,6 +154,8 @@ jobs:
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
+      # Gradle's output goes to a file (shown only when it fails) so the failing tests can be
+      # named in annotations below; the job log itself is not readable without signing in.
       - name: Run Instrumented Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -148,7 +168,15 @@ jobs:
           disable-animations: true
           script: |
             chmod +x gradlew
-            ./gradlew connectedAndroidTest --stacktrace
+            ./gradlew connectedAndroidTest --stacktrace > instrumented-gradle.log 2>&1 || (tail -n 150 instrumented-gradle.log; exit 1)
+
+      - name: Surface instrumented test failures as annotations
+        if: failure()
+        run: |
+          grep -E ' FAILED$|There were failing tests|What went wrong|Execution failed|INSTRUMENTATION_(RESULT|STATUS): (stack|test|class)=' instrumented-gradle.log 2>/dev/null | cut -c1-300 | head -40 | sed 's/^/::error::/'
+          find app/build -path '*androidTest-results*' -name 'TEST-*.xml' 2>/dev/null | head -5 | while read -r f; do
+            grep -B1 -E '<failure|<error' "$f" | cut -c1-300 | head -20 | sed 's/^/::error::/'
+          done
 
       - name: Upload Instrumented Test Coverage Data
         uses: actions/upload-artifact@v7

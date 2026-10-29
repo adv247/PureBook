@@ -1,23 +1,30 @@
 (function () {
     'use strict';
-    // Anti-seen / anti-typing: stops Messenger from telling the other side that you read a chat
-    // or are typing. Hooks every path the web client can use:
+    // Anti-seen / anti-typing: stops Messenger from telling the other side that you read a chat,
+    // are typing, or viewed a story. Hooks every path the web client can use:
     //   - fetch, XMLHttpRequest and navigator.sendBeacon (legacy ajax + GraphQL mutations)
-    //   - WebSocket.send: modern Messenger sends both signals as MQTT PUBLISH on topic /ls_req
-    //     (LightSpeed "tasks": mark-thread-read carries last_read_watermark_ts, typing carries
-    //     is_typing). A frame is dropped only when EVERY task in it is a seen/typing task, so a
-    //     message send is never lost. Frames are never re-encoded (ids exceed 2^53).
+    //   - WebSocket.prototype.send: Messenger sends both signals as MQTT PUBLISH on /ls_req.
+    //       typing  (outer type 4, task payload has thread_key): the frame is dropped; nothing
+    //                waits for an answer to it.
+    //       seen    (outer type 3, task label "21" = mark thread read): the frame is NOT dropped,
+    //                because the client waits for the reply to that request. The read marker is
+    //                rewritten to point at the user's own id, a thread that does not exist, so the
+    //                request completes normally and no chat is marked as read. Other tasks that
+    //                travel in the same frame (a message being sent) are left untouched.
+    // Large ids (> 2^53) are never re-serialised through JSON when that would change them: those
+    // frames are edited as text instead.
     // Patching the prototypes also covers sockets that were opened before this script ran.
-    // Switch at runtime: window.__pbPrivacy.blockSeen / .blockTyping = false.
+    // Switch at runtime: window.__pbPrivacy.blockSeen / .blockTyping / .blockStories = false.
     try {
         if (window.__pbAntiSeen) return;
-        const cfg = window.__pbPrivacy = Object.assign({ blockSeen: true, blockTyping: true, debug: false, blocked: 0 }, window.__pbPrivacy);
+        const cfg = window.__pbPrivacy = Object.assign({ blockSeen: true, blockTyping: true, blockStories: true, debug: false, blocked: 0 }, window.__pbPrivacy);
         window.__pbAntiSeen = true;
 
         const SEEN_URL = /\/ajax\/mercury\/(change_read_status|mark_seen|mark_folder_as_read)|\/ajax\/messaging\/mark_|\/ajax\/mercury\/read_receipts/i;
         const TYPING_URL = /\/ajax\/messaging\/typ\.php|\/ajax\/mercury\/typing|\/typ\.php/i;
         const SEEN_NAME = /(MarkAsRead|MarkThreadRead|MarkThreadsRead|MarkSeen|ReadReceipt|ThreadReadState|ReadWatermark|SetThreadRead|MarkRead)/i;
         const TYPING_NAME = /(TypingIndicator|SendTyping|ThreadTyping|SetTyping|TypingState)/i;
+        const STORY_NAME = /(StoriesUpdateSeenState|Stor(?:y|ies)\w*Seen\w*Mutation|StoryViewerSeen)/i;
         const GRAPHQL_URL = /graphql|\/api\/|\/ajax\//i;
 
         function log(kind, what) {
@@ -50,6 +57,7 @@
             if (text && GRAPHQL_URL.test(url)) {
                 const name = friendlyName(text);
                 if (name) {
+                    if (cfg.blockStories && STORY_NAME.test(name)) return 'story';
                     if (cfg.blockSeen && SEEN_NAME.test(name)) return 'seen';
                     if (cfg.blockTyping && TYPING_NAME.test(name)) return 'typing';
                 }
@@ -57,42 +65,115 @@
             return '';
         }
 
-        // ---- MQTT /ls_req ----
-        function classifyTask(task) {
-            if (!task) return '';
-            let p = task.payload;
-            if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = null; } }
-            if (p && typeof p === 'object') {
-                if ('last_read_watermark_ts' in p) return 'seen';
-                if ('is_typing' in p) return 'typing';
-            }
-            return '';
+        // ---- MQTT /ls_req over WebSocket ----
+        const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
+        const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+
+        function parse(text) {
+            if (typeof text !== 'string') return null;
+            try { const v = JSON.parse(text); return v && typeof v === 'object' ? v : null; } catch (e) { return null; }
         }
 
-        const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
+        // One PUBLISH packet that fills the whole frame; anything else is left alone.
+        function parsePublish(bytes) {
+            if (bytes.length < 4 || (bytes[0] >> 4) !== 3) return null;
+            const qos = (bytes[0] >> 1) & 3;
+            let i = 1, mult = 1, rem = 0, b;
+            do {
+                if (i >= bytes.length || i > 4) return null;
+                b = bytes[i++];
+                rem += (b & 127) * mult;
+                mult *= 128;
+            } while (b & 128);
+            if (i + rem !== bytes.length) return null;
+            const tl = (bytes[i] << 8) | bytes[i + 1];
+            const topic = decoder.decode(bytes.subarray(i + 2, i + 2 + tl));
+            let p = i + 2 + tl;
+            let id = null;
+            if (qos > 0) { id = [bytes[p], bytes[p + 1]]; p += 2; }
+            return { head: bytes[0], topic: topic, id: id, body: bytes.subarray(p) };
+        }
 
-        function mqttVerdict(bytes) {
-            if (!decoder) return '';
-            const text = decoder.decode(bytes);
-            const i = text.indexOf('{');
-            const j = text.lastIndexOf('}');
-            if (i < 0 || j < i || text.indexOf('/ls_req') < 0 && text.indexOf('tasks') < 0) return '';
-            let tasks = null;
-            try {
-                const outer = JSON.parse(text.slice(i, j + 1));
-                const inner = typeof outer.payload === 'string' ? JSON.parse(outer.payload) : outer.payload;
-                tasks = inner && inner.tasks;
-            } catch (e) { return ''; }
-            if (!Array.isArray(tasks) || !tasks.length) return '';
-            let kind = '';
-            for (const t of tasks) {
-                const k = classifyTask(t);
-                if (!k) return '';                        // a real task rides in this frame: let it through
-                if (k === 'seen' && !cfg.blockSeen) return '';
-                if (k === 'typing' && !cfg.blockTyping) return '';
-                kind = k;
+        function buildPublish(pkt, bodyBytes) {
+            const topic = encoder.encode(pkt.topic);
+            const rem = 2 + topic.length + (pkt.id ? 2 : 0) + bodyBytes.length;
+            const len = [];
+            let x = rem;
+            do { let d = x % 128; x = Math.floor(x / 128); if (x > 0) d |= 128; len.push(d); } while (x > 0);
+            const out = new Uint8Array(1 + len.length + rem);
+            let o = 0;
+            out[o++] = pkt.head;
+            len.forEach(v => { out[o++] = v; });
+            out[o++] = topic.length >> 8;
+            out[o++] = topic.length & 255;
+            out.set(topic, o); o += topic.length;
+            if (pkt.id) { out[o++] = pkt.id[0]; out[o++] = pkt.id[1]; }
+            out.set(bodyBytes, o);
+            return out;
+        }
+
+        function userId() {
+            const m = /(?:^|;\s*)c_user=(\d+)/.exec(String(document.cookie || ''));
+            return m ? m[1] : null;
+        }
+
+        const isSeenTask = t => !!t && String(t.label) === '21';
+        const isTypingTask = t => {
+            const p = t && parse(t.payload);
+            return !!p && ('is_typing' in p || 'thread_key' in p) && !('last_read_watermark_ts' in p);
+        };
+
+        function isTypingFrame(outer) {
+            if (outer.type === 4) {                      // fire-and-forget request
+                const task = parse(outer.payload);
+                const p = task && parse(task.payload);
+                return !!p && ('thread_key' in p || 'is_typing' in p);
             }
-            return kind;
+            const body = parse(outer.payload);
+            return !!body && Array.isArray(body.tasks) && body.tasks.length > 0 && body.tasks.every(isTypingTask);
+        }
+
+        // New frame text with every "mark thread read" task pointed at the user's own id, or null.
+        function rewriteSeen(outerText, outer) {
+            if (outer.type !== 3 || typeof outer.payload !== 'string') return null;
+            const body = parse(outer.payload);
+            if (!body || !Array.isArray(body.tasks) || !body.tasks.some(isSeenTask)) return null;
+            const uid = userId();
+            if (!uid) return null;
+            const fake = JSON.stringify({ thread_id: uid, last_read_watermark_ts: Date.now() });
+            if (JSON.stringify(body) === outer.payload && JSON.stringify(outer) === outerText) {
+                body.tasks.forEach(t => { if (isSeenTask(t)) t.payload = fake; });
+                outer.payload = JSON.stringify(body);
+                return JSON.stringify(outer);
+            }
+            // Ids too large for a double: edit the text instead of re-serialising it.
+            let hits = 0;
+            const inner = outer.payload.replace(/("label"\s*:\s*"21"\s*,\s*"payload"\s*:\s*)"(?:[^"\\]|\\.)*"/g, (m, head) => { hits++; return head + JSON.stringify(fake); });
+            const literal = JSON.stringify(outer.payload);
+            if (!hits || outerText.indexOf(literal) < 0) return null;
+            return outerText.replace(literal, () => JSON.stringify(inner));
+        }
+
+        // 'drop' | Uint8Array (frame to send instead) | null (send as it is)
+        function inspectFrame(bytes) {
+            if (!decoder || !encoder) return null;
+            const pkt = parsePublish(bytes);
+            if (!pkt || pkt.topic !== '/ls_req') return null;
+            const text = decoder.decode(pkt.body);
+            const outer = parse(text);
+            if (!outer) return null;
+            if (cfg.blockTyping && isTypingFrame(outer)) { log('typing', 'ws /ls_req'); return 'drop'; }
+            if (cfg.blockSeen) {
+                const next = rewriteSeen(text, outer);
+                if (next) { log('seen', 'ws /ls_req'); return buildPublish(pkt, encoder.encode(next)); }
+                // No user id to point the marker at: drop the frame only when nothing else rides in it.
+                const body = parse(outer.payload);
+                if (outer.type === 3 && body && Array.isArray(body.tasks) && body.tasks.length && body.tasks.every(isSeenTask) && !userId()) {
+                    log('seen', 'ws /ls_req (dropped)');
+                    return 'drop';
+                }
+            }
+            return null;
         }
 
         // ---- fetch ----
@@ -177,8 +258,9 @@
                     if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
                     else if (ArrayBuffer.isView(data)) bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
                     if (bytes) {
-                        const kind = mqttVerdict(bytes);
-                        if (kind) { log(kind, 'ws /ls_req'); return; }
+                        const verdict = inspectFrame(bytes);
+                        if (verdict === 'drop') return;
+                        if (verdict) return origWsSend.call(this, verdict.buffer);
                     }
                 } catch (e) {}
                 return origWsSend.apply(this, arguments);

@@ -1,5 +1,6 @@
 package com.eepiemi.materialbook.utils
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.lang.ref.WeakReference
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -173,11 +175,19 @@ object LinkResolver {
             openFinal(context, cleaned, viaTab)
             return
         }
+        // Expanding a short link can take tens of seconds (up to 5 hops, 4 s each, HEAD then GET).
+        // The coroutine must not keep the calling Activity alive for that long, so it holds it
+        // only weakly and falls back to the application context if it is gone by then.
+        val caller = WeakReference(context)
+        val app = context.applicationContext
         scope.launch {
             val resolved = runCatching { unshorten(cleaned) }.getOrDefault(cleaned)
-            openFinal(context, cleanLink(resolved), viaTab)
+            openFinal(usableContext(caller.get(), app), cleanLink(resolved), viaTab)
         }
     }
+
+    private fun usableContext(caller: Context?, fallback: Context): Context =
+        if (caller is Activity && (caller.isFinishing || caller.isDestroyed)) fallback else caller ?: fallback
 
     /** Follows redirects one hop at a time with HEAD (never loading the page), at most [maxHops]. */
     suspend fun unshorten(url: String, maxHops: Int = 5): String = withContext(Dispatchers.IO) {
