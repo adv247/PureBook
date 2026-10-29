@@ -43,6 +43,7 @@ class MainViewModel(
             Script(true, R.raw.scripts, "scripts.js"), // always apply
             Script(settings.messagesDesktop.value, R.raw.messages_tab, "messages_tab.js"),
             Script(settings.removeAds.value, R.raw.adblock, "adblock.js"),
+            Script(settings.enableDownloadContent.value, R.raw.media_quality, "media_quality.js"),
             Script(settings.enableDownloadContent.value, R.raw.download_content, "download_content.js"),
             Script(settings.enableCopyToClipboard.value, R.raw.copy_to_clipboard, "copy_to_clipboard.js"),
             Script(true, R.raw.copy_post_text, "copy_post_text.js"),

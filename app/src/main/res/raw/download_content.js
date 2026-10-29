@@ -405,15 +405,23 @@
     else if (window.DownloadBridge && window.DownloadBridge[name]) window.DownloadBridge[name](a, b);
   };
 
-  const sendCandidates = (videoEl) => {
+  // What is sent for this video. The HD file the page announced for it (media_quality.js reads
+  // it from Facebook's own data) goes first among the muxed candidates: the player may never
+  // have requested it, and a muxed file is saved as it is, with sound.
+  const buildPayload = (videoEl) => {
     const buckets = candidatesFor(videoEl);
-    const payload = {
-      progressive: buckets.progressive.map(sanitizeVideoUrl),
+    const hd = typeof window.__pbHdUrlFor === "function" ? window.__pbHdUrlFor() : null;
+    const progressive = hd ? [hd].concat(buckets.progressive.filter((u) => u !== hd)) : buckets.progressive;
+    return {
+      progressive: progressive.map(sanitizeVideoUrl),
       unknown: buckets.unknown.map(sanitizeVideoUrl),
       video: buckets.video.map(sanitizeVideoUrl),
       audio: buckets.audio.map(sanitizeVideoUrl)
     };
-    dlCall("downloadUrl", JSON.stringify(payload), "video/mp4");
+  };
+
+  const sendCandidates = (videoEl) => {
+    dlCall("downloadUrl", JSON.stringify(buildPayload(videoEl)), "video/mp4");
   };
 
   // Facebook's media URLs carry MSE range query params (bytestart/byteend)
@@ -443,6 +451,10 @@
 
     const src = videoEl.currentSrc || videoEl.src;
     if (src && !src.startsWith("blob:")) return done(src);
+
+    // The page already announced an HD file for this video: no need to make the player fetch one.
+    const announced = typeof window.__pbHdUrlFor === "function" ? window.__pbHdUrlFor() : null;
+    if (announced) return done(announced);
 
     const known = knownUrlFor(videoEl);
     if (known) return done(known);
@@ -538,7 +550,9 @@
       return;
     }
 
-    downloadBase64(url, "image/jpeg");
+    // The largest size of this photo that the page announced (media_quality.js), if it knows one.
+    const best = typeof window.__pbImageUrlFor === "function" ? window.__pbImageUrlFor() : null;
+    downloadBase64(best || url, "image/jpeg");
   };
 
   const downloadBase64 = (url, fallbackMime) => {
@@ -866,4 +880,6 @@
 
   // Which URLs would be sent for this video, sharpest first (used by the tests).
   window.__materialbookCandidates = candidatesFor;
+  // The full payload that would be sent (used by the tests).
+  window.__materialbookPayload = buildPayload;
 })();
