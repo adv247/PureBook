@@ -47,6 +47,7 @@ class MainViewModel(
             Script(true, R.raw.copy_post_text, "copy_post_text.js"),
             Script(true, R.raw.link_privacy, "link_privacy.js"),
             Script(true, R.raw.anti_seen, "anti_seen.js"),
+            Script(true, R.raw.fb_timer, "fb_timer.js"),
             Script(settings.stickyNavbar.value, R.raw.sticky_navbar, "sticky_navbar.js"),
             Script(settings.reelControls.value, R.raw.reel_controls, "reel_controls.js"),
             Script(settings.reelControls.value && settings.reelGestures.value, R.raw.reel_gestures, "reel_gestures.js"),

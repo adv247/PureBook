@@ -105,11 +105,21 @@ fun appLinkUrl(data: String?): String? {
 
 /**
  * Hands a URL to whatever the user set as default browser/app (Brave, Chrome, ...), the way a
- * browser would: only to activities that accept links from a browser. Returns false when
- * nothing on the device can open it.
+ * browser would. Web links go through [LinkResolver] first (cleaned, short links expanded, the
+ * store's own app when installed) and open once resolved, so true only means "on its way".
+ * Returns false when nothing on the device can open a non-web link.
  */
 fun openExternalUrl(context: Context, url: String): Boolean {
     val target = externalTarget(url) ?: return false
+    if (isWebUrl(target)) {
+        LinkResolver.open(context, target, viaTab = false)
+        return true
+    }
+    return launchBrowser(context, target)
+}
+
+/** The plain VIEW intent to the default browser/app, with no cleaning or expanding. */
+internal fun launchBrowser(context: Context, target: String): Boolean {
     val uri = runCatching { target.toUri() }.getOrNull() ?: return false
     val intent = Intent(Intent.ACTION_VIEW, uri)
         .addCategory(Intent.CATEGORY_BROWSABLE)
