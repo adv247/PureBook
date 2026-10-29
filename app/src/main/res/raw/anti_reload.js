@@ -7,22 +7,27 @@
     //  - "hidden" events are left alone, so Facebook still pauses videos when you leave.
     //  - Videos that were playing when the app was hidden are resumed on return, because
     //    Facebook's handler that would have resumed them is the one being blocked.
+    //  - A page restored from the back/forward cache (pageshow with persisted) is treated the same.
     // Unlike pinning document.visibilityState, nothing is faked, so code that reads it keeps
     // working. Turn off at runtime: window.__pbAntiReloadCfg = { enabled: false } before load.
+    // Installed at document start (WebViewHardening.kt) and again by the script bundle; the
+    // guard below makes the second run a no-op.
     try {
         if (window.__pbAntiReload) return;
         const cfg = window.__pbAntiReloadCfg = Object.assign({ enabled: true }, window.__pbAntiReloadCfg);
         if (!cfg.enabled) return;
         window.__pbAntiReload = true;
 
-        const TYPES = ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'resume'];
+        const TYPES = ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'resume', 'pageshow'];
+        const MAX_REMEMBERED = 8;
         const ours = []; // [target, type, listener] registered by PureBook scripts
-        const PAGE_SCRIPT = /(fbcdn\.net|fbsbx\.com|facebook\.com\/rsrc)/i;
         const opts = {
-            // Facebook's own code runs from its CDN; our scripts run from evaluateJavaScript.
+            // A listener registered by Facebook's code comes from a script with a URL: its CDN, or
+            // the page itself for inline scripts. PureBook's scripts are evaluated from the app
+            // (no URL in the stack). When in doubt (no stack at all) it counts as Facebook's.
             fromPage: function () {
                 const stack = String(new Error().stack || '');
-                return !stack || PAGE_SCRIPT.test(stack);
+                return !stack || /https?:\/\//i.test(stack);
             },
         };
 
@@ -47,15 +52,17 @@
 
         let wasPlaying = [];
         function gate(e) {
+            const restore = e.type === 'pageshow';
             const visible = document.visibilityState === 'visible';
-            if (!visible) {
-                wasPlaying = Array.prototype.filter.call(document.querySelectorAll('video'), v => !v.paused && !v.ended);
+            if (!restore && !visible) {
+                wasPlaying = Array.prototype.filter.call(document.querySelectorAll('video'), v => !v.paused && !v.ended).slice(0, MAX_REMEMBERED);
             }
             ours.slice().forEach(entry => {
                 if (entry[1] !== e.type) return;
                 try { typeof entry[2] === 'function' ? entry[2].call(entry[0], e) : entry[2].handleEvent(e); } catch (err) {}
             });
-            if (!visible) return;
+            const blockable = restore ? e.persisted === true : visible;
+            if (!blockable) return;
             e.stopImmediatePropagation();
             const inPip = document.body && document.body.hasAttribute('data-astryx-pip-active');
             if (!inPip) {
@@ -64,7 +71,7 @@
                     try { const p = v.play(); if (p && p.catch) p.catch(() => {}); } catch (err) {}
                 });
             }
-            wasPlaying = [];
+            wasPlaying = []; // never keep elements alive longer than one hide/show cycle
         }
         TYPES.forEach(t => origAdd.call(window, t, gate, true));
 
