@@ -107,5 +107,13 @@ private fun postAlert(context: Context, id: Int, text: Int, url: String) {
         .setContentIntent(open)
         .setAutoCancel(true)
         .build()
-    runCatching { NotificationManagerCompat.from(context).notify(id, n) }.onFailure { Log.d("NotifPoll", "notify failed: $it") }
+    // POST_NOTIFICATIONS may be denied (API 33+): lint only accepts an explicit SecurityException
+    // handler here, not runCatching.
+    try {
+        NotificationManagerCompat.from(context).notify(id, n)
+    } catch (e: SecurityException) {
+        Log.d("NotifPoll", "notify not permitted: $e")
+    } catch (e: Exception) {
+        Log.d("NotifPoll", "notify failed: $e")
+    }
 }
