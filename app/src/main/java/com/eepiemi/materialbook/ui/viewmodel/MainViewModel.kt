@@ -34,17 +34,9 @@ class MainViewModel(
         _themeColor.value = color
     }
 
-<<<<<<< HEAD
-    private fun loadScripts(
-        resources: Resources,
-        settings: SettingsViewModel
-    ) {
-        val scripts = listOf(
-            Script(true, R.raw.anti_reload, "anti_reload.js"), // first: later scripts register through its gate
-=======
     // The scripts the settings turn on, and the values they read (the bundle is built from these).
     private fun scriptList(settings: SettingsViewModel): List<Script> = listOf(
->>>>>>> upstream/main
+            Script(true, R.raw.anti_reload, "anti_reload.js"), // first: later scripts register through its gate
             Script(true, R.raw.scripts, "scripts.js"), // always apply
             Script(settings.messagesDesktop.value, R.raw.messages_tab, "messages_tab.js"),
             Script(settings.removeAds.value, R.raw.adblock, "adblock.js"),
