@@ -35,8 +35,10 @@ class MainViewModel(
     }
 
     // The scripts the settings turn on, and the values they read (the bundle is built from these).
+    // anti_reload.js, anti_seen.js and fb_timer.js are not loaded: they hook fetch/XHR/WebSocket and
+    // the visibility events of every Facebook page and left the feed empty and slow. Their files stay
+    // in res/raw so they can be brought back once they are made safe.
     private fun scriptList(settings: SettingsViewModel): List<Script> = listOf(
-            Script(true, R.raw.anti_reload, "anti_reload.js"), // first: later scripts register through its gate
             Script(true, R.raw.scripts, "scripts.js"), // always apply
             Script(settings.messagesDesktop.value, R.raw.messages_tab, "messages_tab.js"),
             Script(settings.removeAds.value, R.raw.adblock, "adblock.js"),
@@ -45,8 +47,6 @@ class MainViewModel(
             Script(true, R.raw.copy_post_text, "copy_post_text.js"),
             Script(true, R.raw.text_select, "text_select.js"),
             Script(true, R.raw.link_privacy, "link_privacy.js"),
-            Script(true, R.raw.anti_seen, "anti_seen.js"),
-            Script(true, R.raw.fb_timer, "fb_timer.js"),
             Script(settings.stickyNavbar.value, R.raw.sticky_navbar, "sticky_navbar.js"),
             Script(settings.reelControls.value, R.raw.reel_controls, "reel_controls.js"),
             Script(settings.reelControls.value && settings.reelGestures.value, R.raw.reel_gestures, "reel_gestures.js"),

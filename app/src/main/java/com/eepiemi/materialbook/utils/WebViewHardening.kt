@@ -3,15 +3,12 @@ package com.eepiemi.materialbook.utils
 import android.webkit.WebView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import com.eepiemi.materialbook.R
 import com.multiplatform.webview.web.WebViewState
 
-// Scripts that have to exist before Facebook's own code runs: they wrap WebSocket / fetch /
-// addEventListener, and Messenger opens its socket during page load. The script bundle only runs
-// once the page has finished loading, which is too late for the first socket and for the handlers
-// Facebook registers up front. Each script guards against a second run, so the bundle's later copy
-// is a no-op.
-private val EARLY_SCRIPTS = intArrayOf(R.raw.anti_reload, R.raw.anti_seen)
+// Scripts that run at document start, before Facebook's own code. None for now: anti_reload.js and
+// anti_seen.js used to be listed here, but wrapping fetch / WebSocket / addEventListener before the
+// page starts left the feed empty and slow. Add a raw resource id here to load it early again.
+private val EARLY_SCRIPTS = intArrayOf()
 
 // Wildcard rules match subdomains only, so the bare domains are listed too.
 private val EARLY_ORIGINS = setOf(
@@ -38,6 +35,7 @@ fun hardenWebView(state: WebViewState, webView: WebView) {
 
 /** Runs the early scripts at document start on Facebook / Messenger pages, where supported. */
 fun installEarlyScripts(webView: WebView) {
+    if (EARLY_SCRIPTS.isEmpty()) return
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
     runCatching {
         val script = EARLY_SCRIPTS.joinToString("\n") { id ->
