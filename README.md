@@ -1,5 +1,5 @@
 <p align="middle">
-    <img src='./fastlane/metadata/android/en-US/images/featureGraphic.png' alt="Faceboost banner" width="100%">
+    <img src='./fastlane/metadata/android/en-US/images/featureGraphic.png' alt="PureBook banner" width="100%">
 </p>
 
 <p align="middle">
@@ -7,25 +7,24 @@
 </p>
 
 <p align="center">
-    <a href='https://github.com/Ufoex/Faceboost/releases/latest'><img alt='Download' height='40' src='https://img.shields.io/github/v/release/Ufoex/Faceboost?style=for-the-badge&logo=github&label=Download&color=1877F2&labelColor=24292F'/></a>
-    <a href='https://grev.shehryar.ae/?owner=Ufoex&repo=Faceboost'><img alt='Downloads' height='40' src='https://img.shields.io/github/downloads/Ufoex/Faceboost/total?style=for-the-badge&logo=github&label=Downloads&color=1877F2&labelColor=24292F'/></a>
-    <a href='https://buymeacoffee.com/masterllamk'><img alt='Buy me a coffee' height='40' src='https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black'/></a>
+    <a href='https://github.com/adv247/PureBook/releases/latest'><img alt='Download' height='40' src='https://img.shields.io/github/v/release/adv247/PureBook?style=for-the-badge&logo=github&label=Download&color=1877F2&labelColor=24292F'/></a>
+    <a href='https://grev.shehryar.ae/?owner=adv247&repo=PureBook'><img alt='Downloads' height='40' src='https://img.shields.io/github/downloads/adv247/PureBook/total?style=for-the-badge&logo=github&label=Downloads&color=1877F2&labelColor=24292F'/></a>
+    <a href='https://t.me/NhanTuThanh'><img alt='Telegram' height='40' src='https://img.shields.io/badge/Telegram-%40NhanTuThanh-26A5E4?style=for-the-badge&logo=telegram&logoColor=white'/></a>
 </p>
 
 <p align="center">
-    🙋 Problem or suggestion? <a href='https://github.com/Ufoex/Faceboost/issues/new/choose'>Open an issue</a> &nbsp;·&nbsp; ☕ Like the app? <a href='https://buymeacoffee.com/masterllamk'>Buy me a coffee</a>
+    🙋 Problem or suggestion? <a href='https://github.com/adv247/PureBook/issues/new/choose'>Open an issue</a> &nbsp;·&nbsp; 💬 Contact: <a href='https://t.me/NhanTuThanh'>Telegram @NhanTuThanh</a>
 </p>
 
 <p align="middle">
-    📸 Also available: <a href='https://github.com/Ufoex/Instaboost'><b>Instaboost</b></a>, the same idea for Instagram.<br>
-    🎵 And <a href='https://github.com/Ufoex/Spotiboost'><b>Spotiboost</b></a>, for Spotify.
+    🔗 Based on <a href='https://github.com/Ufoex/Faceboost'><b>Faceboost</b></a> by Ufoex.
 </p>
 
 <h2 align="middle">
     ✏️ About this repo
 </h2>
 
-The app is called **Faceboost** (formerly Materialbook). The repository was renamed too; the old address redirects here. The package name stays `com.ufoex.materialbook` so updates keep replacing the installed app.
+The app is called **PureBook**, a fork of [Faceboost](https://github.com/Ufoex/Faceboost) (formerly Materialbook) with its own privacy settings. The package name is `com.adv247.purebook`, so it installs next to Faceboost instead of replacing it, and its updates come from [adv247/PureBook](https://github.com/adv247/PureBook/releases).
 
 This is **not an original project**. It is a collection repo where the changes from other
 [Materialbook](https://github.com/eepiemi/Materialbook) forks are brought together in one app.
@@ -39,7 +38,8 @@ Almost all the code was written by the people below; this repo only merges it an
 | [dh6k](https://github.com/dh6k) | [Materialbook_fork](https://github.com/dh6k/Materialbook_fork) | Messenger redirect, external links, adblock hardening, photo viewer and feed performance fixes |
 | [farhun1](https://github.com/farhun1) | [BraveBook](https://github.com/farhun1/BraveBook) | Brave block list ad/tracker blocking, hide group posts |
 | [Kdomy](https://github.com/Kdomy) | [LiteBook](https://github.com/Kdomy/LiteBook) | Copy post text, reliable video/reel downloads, AMOLED login fix |
-| [Ufoex](https://github.com/Ufoex) | This fork | Reel controls, auto-scroll and screen-off audio for reels, a steadier reel viewer, collapsing toolbar, update check |
+| [Ufoex](https://github.com/Ufoex) | [Faceboost](https://github.com/Ufoex/Faceboost) (upstream) | Reel controls, auto-scroll and screen-off audio for reels, a steadier reel viewer, collapsing toolbar, update check |
+| [adv247](https://github.com/adv247) | This fork (PureBook) | Rebrand and separate package ID, link and tracking cleanup (including Lazada and Shopee links), seen/typing privacy scripts, early-loaded WebView hardening |
 
 See [FORK_CHANGES.md](./FORK_CHANGES.md) for the details. Material You theming and AMOLED Black ship off by default (from AstryxBook); both are toggles in Settings.
 
@@ -109,7 +109,7 @@ To use Picture-in-Picture:
    * **2:3**
    * **3:4**
    * **9:16** (may overflow on some devices)
-3. If needed, also allow PiP in Android under **Settings > Apps > Materialbook > Picture-in-picture**.
+3. If needed, also allow PiP in Android under **Settings > Apps > PureBook > Picture-in-picture**.
 4. Open a Facebook video or Reel and start playback.
 5. Keep the video visible and audible, then use the Home gesture or Home button.
 
@@ -148,16 +148,16 @@ and that both the app and Android system PiP permissions are enabled.
     🛠️ Setup
 </h2>
 
-Materialbook requires Android 8.0 (API level 26) or newer.
+PureBook requires Android 8.0 (API level 26) or newer.
 
 1.  **Clone the repository**
     * In Android Studio:
       * File > New > Project from Version Control
-      * Paste `https://github.com/Ufoex/Faceboost.git` and clone.
+      * Paste `https://github.com/adv247/PureBook.git` and clone.
     * Or via terminal:
     ```
-    git clone https://github.com/Ufoex/Faceboost.git
-    cd Faceboost
+    git clone https://github.com/adv247/PureBook.git
+    cd PureBook
     ```
 2.  **Open in Android Studio.** (only if cloned via terminal)
     * Select Open an Existing Project and choose the cloned folder.
@@ -180,7 +180,8 @@ GitHub Actions runs all three checks. Android lint reports are uploaded as a wor
     💗 Acknowledgement:
 </h2>
 
+*  PureBook is a fork of [Faceboost](https://github.com/Ufoex/Faceboost) by Ufoex
 *  This is a fork of [Materialbook](https://github.com/eepiemi/Materialbook) by eepiemi, itself a fork of [Nobook](https://github.com/ycngmn/Nobook) by ycngmn
 *  [@KevinnZou/compose-webview-multiplatform](https://github.com/KevinnZou/compose-webview-multiplatform)
 
-Faceboost is not affiliated with or endorsed by Facebook or Meta. Facebook is a trademark of Meta Platforms, Inc.
+PureBook is not affiliated with or endorsed by Facebook or Meta. Facebook is a trademark of Meta Platforms, Inc.
