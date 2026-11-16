@@ -2,24 +2,23 @@
     <img src='./fastlane/metadata/android/en-US/images/featureGraphic.png' alt="Faceboost banner" width="100%">
 </p>
 
-<h1 align="middle">
-    📱 Download
-</h1>
-
 <p align="middle">
-    <a href='https://github.com/Ufoex/Faceboost/releases/latest'><img alt='Download' height='40' src='./assets/download.svg'/></a>
+    <b>English</b> · <a href="README.es.md">Español</a>
+</p>
+
+<p align="center">
+    <a href='https://github.com/Ufoex/Faceboost/releases/latest'><img alt='Download' height='40' src='https://img.shields.io/github/v/release/Ufoex/Faceboost?style=for-the-badge&logo=github&label=Download&color=1877F2&labelColor=24292F'/></a>
+    <a href='https://grev.shehryar.ae/?owner=Ufoex&repo=Faceboost'><img alt='Downloads' height='40' src='https://img.shields.io/github/downloads/Ufoex/Faceboost/total?style=for-the-badge&logo=github&label=Downloads&color=1877F2&labelColor=24292F'/></a>
+    <a href='https://buymeacoffee.com/masterllamk'><img alt='Buy me a coffee' height='40' src='https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black'/></a>
+</p>
+
+<p align="center">
+    🙋 Problem or suggestion? <a href='https://github.com/Ufoex/Faceboost/issues/new/choose'>Open an issue</a> &nbsp;·&nbsp; ☕ Like the app? <a href='https://buymeacoffee.com/masterllamk'>Buy me a coffee</a>
 </p>
 
 <p align="middle">
-    <a href='https://grev.shehryar.ae/?owner=Ufoex&repo=Faceboost'><img alt='Downloads count' height='40' src='https://img.shields.io/github/downloads/Ufoex/Faceboost/total?style=for-the-badge&logo=github&label=Downloads&color=1877F2&labelColor=24292F'/></a>
-</p>
-
-<h2 align="middle">
-    🙋 Have issues?
-</h2>
-
-<p align="middle">
-    <a href='https://github.com/Ufoex/Faceboost/issues/new/choose'><img alt='Open issue' height='40' src='./assets/open_issue.svg'/></a>
+    📸 Also available: <a href='https://github.com/Ufoex/Instaboost'><b>Instaboost</b></a>, the same idea for Instagram.<br>
+    🎵 And <a href='https://github.com/Ufoex/Spotiboost'><b>Spotiboost</b></a>, for Spotify.
 </p>
 
 <h2 align="middle">
@@ -61,7 +60,7 @@ On by default:
 *  Checks GitHub for a new version when the app opens (Settings → *Check for updates on start*); *Check for updates now* does it on demand, and the dialog downloads the new APK
 *  Reel controls: time, seek bar, fullscreen and volume on paused reels (also while the icons are hidden), a button to hide the reel icons (fading out; on the desktop site the video then fills the screen) and, optionally, resizing so the whole video shows without cropping. They work on the phone and the desktop site
 *  Desktop layout can be switched off on tablets: Facebook then sends the phone site, at the full width of the screen
-*  Stays in portrait on phones and tablets while browsing (fullscreen video rotates); old cache files are deleted when the app starts
+*  Stays in portrait on phones and tablets while browsing (fullscreen video rotates), unless the Desktop layout is on and *Desktop orientation* is set to landscape or automatic (experimental); old cache files are deleted when the app starts
 *  "Share via..." in Facebook's share sheet, and an option to run only the scripts built into the app
 *  App lock (Settings, off by default): fingerprint, face or phone PIN to open the app
 *  Messenger voice and video calls in the Messages layer (asks for the camera and microphone when a call starts); log out and share-this-page rows in Settings
@@ -91,7 +90,7 @@ Off by default (opt-in):
 *  Keeps a Picture-in-Picture video's audio playing when the screen locks
 
 Always on:
-*  Keeps the reel you are watching in place when Facebook rebuilds the reel list or an ad is hidden, and fades the thumbnail into the video when it starts
+*  Keeps the reel you are watching in place when Facebook rebuilds the reel list or an ad is hidden, fades the thumbnail into the video when it starts, and opens a reel out from the card you tapped
 *  Supports real fullscreen video, including landscape, from Facebook's fullscreen button
    (on phones the app otherwise stays in portrait, since Facebook's mobile site breaks in landscape)
 *  Fullscreen video rotates by the sensor, even with the system auto-rotate off
@@ -183,3 +182,5 @@ GitHub Actions runs all three checks. Android lint reports are uploaded as a wor
 
 *  This is a fork of [Materialbook](https://github.com/eepiemi/Materialbook) by eepiemi, itself a fork of [Nobook](https://github.com/ycngmn/Nobook) by ycngmn
 *  [@KevinnZou/compose-webview-multiplatform](https://github.com/KevinnZou/compose-webview-multiplatform)
+
+Faceboost is not affiliated with or endorsed by Facebook or Meta. Facebook is a trademark of Meta Platforms, Inc.

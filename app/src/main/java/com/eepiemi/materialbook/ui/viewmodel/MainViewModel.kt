@@ -34,12 +34,17 @@ class MainViewModel(
         _themeColor.value = color
     }
 
+<<<<<<< HEAD
     private fun loadScripts(
         resources: Resources,
         settings: SettingsViewModel
     ) {
         val scripts = listOf(
             Script(true, R.raw.anti_reload, "anti_reload.js"), // first: later scripts register through its gate
+=======
+    // The scripts the settings turn on, and the values they read (the bundle is built from these).
+    private fun scriptList(settings: SettingsViewModel): List<Script> = listOf(
+>>>>>>> upstream/main
             Script(true, R.raw.scripts, "scripts.js"), // always apply
             Script(settings.messagesDesktop.value, R.raw.messages_tab, "messages_tab.js"),
             Script(settings.removeAds.value, R.raw.adblock, "adblock.js"),
@@ -53,6 +58,7 @@ class MainViewModel(
             Script(settings.stickyNavbar.value, R.raw.sticky_navbar, "sticky_navbar.js"),
             Script(settings.reelControls.value, R.raw.reel_controls, "reel_controls.js"),
             Script(settings.reelControls.value && settings.reelGestures.value, R.raw.reel_gestures, "reel_gestures.js"),
+            Script(settings.reelControls.value, R.raw.reel_transition, "reel_transition.js"),
             Script(settings.reelBackgroundAudio.value, R.raw.reel_bg_audio, "reel_bg_audio.js"),
             Script(settings.autoScrollReels.value, R.raw.autoscroll_reels, "autoscroll_reels.js"),
             // Needs the bars pinned by the sticky navbar script.
@@ -72,10 +78,26 @@ class MainViewModel(
             // start running any sooner than the slowest script in this list,
             // they're all evaluated together as one combined blob. Loaded separately, directly from the bundled
             // resource, in MaterialbookWV.kt instead.
-        )
+    )
+
+    private fun scriptConfig(settings: SettingsViewModel) =
+        "window.__mbReel={rate:${settings.reelHoldRate.value},skip:${settings.reelSkipSeconds.value},fit:${settings.reelFit.value && settings.reelControls.value}};\n"
+
+    // What the page was last loaded with: Settings closed with Back (not the Apply button) reloads the page when it differs.
+    private fun signature(settings: SettingsViewModel) =
+        scriptConfig(settings) + scriptList(settings).filter { it.isEnabled }.joinToString(",") { it.scriptTitle }
+    private var applied = signature(settings)
+    fun pageSettingsChanged(settings: SettingsViewModel) = signature(settings) != applied
+
+    private fun loadScripts(
+        resources: Resources,
+        settings: SettingsViewModel
+    ) {
+        applied = signature(settings)
+        val scripts = scriptList(settings) + debugRecorder(resources)
 
         viewModelScope.launch {
-            val cfg = "window.__mbReel={rate:${settings.reelHoldRate.value},skip:${settings.reelSkipSeconds.value},fit:${settings.reelFit.value && settings.reelControls.value}};\n"
+            val cfg = scriptConfig(settings)
             _scripts.value = cfg +
                 bundleScripts(scripts) { resId ->
                     resources.openRawResource(resId).bufferedReader().use { it.readText() }
@@ -93,5 +115,12 @@ class MainViewModel(
 
     private fun clearScripts() {
         _scripts.value = null
+    }
+
+    // Only debug builds have src/debug/res/raw/debug_recorder.js (gestures, scroll and reel state to logcat);
+    // in release the resource does not exist, so nothing is added.
+    private fun debugRecorder(resources: Resources): List<Script> {
+        val id = resources.getIdentifier("debug_recorder", "raw", resources.getResourcePackageName(R.raw.scripts))
+        return if (id != 0) listOf(Script(true, id, "debug_recorder.js")) else emptyList()
     }
 }

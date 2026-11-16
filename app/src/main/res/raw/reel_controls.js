@@ -18,18 +18,95 @@
 
     let bar, seek, time, fsBtn, muteBtn, vid = null, dragging = false;
 
+    // Slides up and fades in when shown, back down when hidden (display goes off once it has left).
+    const showBar = (on) => {
+        if (!bar || bar._on === on) return;
+        bar._on = on;
+        clearTimeout(bar._t);
+        if (on) {
+            bar.style.display = 'block';
+            void bar.offsetWidth; // so the transition starts from the hidden state
+            bar.style.transform = 'none'; bar.style.opacity = '1';
+        } else {
+            bar.style.transform = 'translateY(100%)'; bar.style.opacity = '0';
+            bar._t = setTimeout(() => { bar.style.display = 'none'; }, 260);
+        }
+    };
+
+    // The reel on screen's own layers (mobile site): the action rail on the right (like, comment, share...)
+    // and the author/caption block along the bottom. Facebook places each one on its own, so they can be
+    // moved one by one. likeButton's trick: the like button is the only rail button with a long-press action.
+    const overlay = () => {
+        let like = null, best = Infinity;
+        document.querySelectorAll('[role="button"][data-long-click-action-id]').forEach(b => {
+            const r = b.getBoundingClientRect();
+            const d = Math.abs((r.top + r.bottom) / 2 - innerHeight / 2);
+            if (r.width && r.bottom > 0 && r.top < innerHeight && d < best) { best = d; like = b; }
+        });
+        const layer = like && like.parentElement;
+        if (!layer) return null;
+        const rail = [], info = [], time = [];
+        for (const c of layer.children) {
+            const r = c.getBoundingClientRect();
+            if (!r.width || !r.height) continue;
+            if (r.width < 100 && r.left > innerWidth * 0.7) rail.push(c);
+            else if (r.width > innerWidth * 0.8 && r.height < innerHeight * 0.3 && r.top > innerHeight * 0.6) {
+                // Facebook's own time and volume row (digits like 0:05) is not lifted: our bar replaces it
+                (/\d+:\d\d/.test(c.innerText) ? time : info).push(c);
+            }
+        }
+        return { rail, info, time, layer };
+    };
+    // Lifts them by h px (the playback bar's height) so the bar does not cover them; 0 puts them back.
+    let lifted = [], timeRows = [], seekRows = [];
+    const lift = (h) => {
+        const o = h ? overlay() : null;
+        // hide mode: Facebook's own seek bar goes while ours shows (a second line at the bottom otherwise)
+        const seeks = h && hideOn ? [...document.querySelectorAll('.seekbar-container')].filter(e => {
+            const r = e.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight;
+        }) : [];
+        seekRows.forEach(e => { if (seeks.indexOf(e) === -1) e.style.opacity = ''; });
+        seeks.forEach(e => { e.style.opacity = '0'; });
+        seekRows = seeks;
+        const rows = o ? o.time : [];
+        timeRows.forEach(e => { if (rows.indexOf(e) === -1) e.style.opacity = ''; });
+        rows.forEach(e => { e.style.opacity = '0'; });
+        timeRows = rows;
+        // Facebook re-renders the rail when the reel is liked: for a moment the like button is not found. What is lifted
+        // stays where it is then, instead of dropping to its place.
+        if (h && !o && lifted.length) return;
+        // The whole layer rises (its time row is invisible anyway): Facebook replaces the rail's own elements when the reel is
+        // liked, which dropped the like button until the next pass, but the layer that holds them stays.
+        const want = o ? [o.layer] : [];
+        // The lift is an attribute plus a CSS rule (!important), not an inline transform: when Facebook rewrote the element's
+        // style (the like) the inline value was lost and the old check ("already lifted") never put it back.
+        if (h) document.documentElement.style.setProperty('--mb-lift', h);
+        lifted.forEach(e => { if (want.indexOf(e) === -1) { e.removeAttribute('data-mb-lift'); e.style.transform = ''; } });
+        want.forEach(e => {
+            if (!e.hasAttribute('data-mb-lift')) { e.style.transition = 'transform .25s ease'; e.setAttribute('data-mb-lift', ''); }
+        });
+        lifted = want;
+    };
+
     const build = () => {
         bar = document.createElement('div');
         bar.id = 'mb-reel-controls';
         bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;display:none;' +
+            'transform:translateY(100%);opacity:0;transition:transform .25s ease,opacity .25s ease;' +
             'padding:10px 16px 12px;box-sizing:border-box;color:#fff;font:600 15px sans-serif;' +
-            'background:rgba(0,0,0,.88);';
+            'background:rgba(0,0,0,.35);text-shadow:0 1px 3px rgba(0,0,0,.75);';
         bar.innerHTML =
             '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
             '<span id="mb-reel-time">0:00 / 0:00</span>' +
             '<span style="display:flex;gap:18px"><span id="mb-reel-fs">' + svg(ICON.full) + '</span>' +
             '<span id="mb-reel-mute">' + svg(ICON.vol) + '</span></span></div>' +
             '<input id="mb-reel-seek" type="range" min="0" max="1000" value="0" style="width:100%;display:block">';
+        const st = document.createElement('style');
+        st.textContent = '#mb-reel-seek{-webkit-appearance:none;appearance:none;height:3px;border-radius:2px;margin:12px 0 6px;outline:none;' +
+            'background:linear-gradient(to right,#fff var(--mb-p,0%),rgba(255,255,255,.35) var(--mb-p,0%))}' +
+            '#mb-reel-seek::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 0 3px rgba(0,0,0,.6)}' +
+            '#mb-reel-fs,#mb-reel-mute{filter:drop-shadow(0 1px 2px rgba(0,0,0,.75))}';
+        document.head.appendChild(st);
         document.body.appendChild(bar);
         time = bar.querySelector('#mb-reel-time');
         seek = bar.querySelector('#mb-reel-seek');
@@ -42,6 +119,7 @@
 
         seek.addEventListener('input', () => {
             dragging = true;
+            seek.style.setProperty('--mb-p', seek.value / 10 + '%');
             if (vid && isFinite(vid.duration)) vid.currentTime = vid.duration * seek.value / 1000;
         });
         seek.addEventListener('change', () => { dragging = false; });
@@ -72,13 +150,17 @@
         return best;
     };
 
-    // Facebook's regular video viewer already has its own range input while paused.
-    const hasNativeSeek = () => [...document.querySelectorAll('input[type=range]')].some(i => {
-        if (i.id === 'mb-reel-seek') return false;
-        const r = i.getBoundingClientRect();
-        // (a seek bar our own hide mode made invisible does not count)
-        return r.width > 0 && r.height > 0 && getComputedStyle(i).opacity !== '0' && !i.closest('[data-mb-hid],[data-mb-fade]');
-    });
+    // Facebook's own seek bar. The reel viewer draws it with .seekbar-active (+ a .seekbar-thumb dot) while
+    // paused; its <input type=range> is only an invisible accessibility layer (opacity 0). The regular
+    // video viewer has a visible range input instead. Only one on screen counts: the reels are stacked.
+    const shown = (e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth &&
+            getComputedStyle(e).opacity !== '0' && !e.closest('[data-mb-hid],[data-mb-fade]');
+    };
+    const hasNativeSeek = () =>
+        [...document.querySelectorAll('.seekbar-active,.seekbar-thumb')].some(shown) ||
+        [...document.querySelectorAll('input[type=range]')].some(i => i.id !== 'mb-reel-seek' && shown(i));
 
     // ---- Hide icons button ----
     const EYE = 'M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z';
@@ -117,7 +199,8 @@
     };
 
     const style = document.createElement('style');
-    style.textContent = 'html.mb-hide-reel-ui [data-mb-hid]{opacity:0 !important;pointer-events:none !important}' +
+    style.textContent = '[data-mb-lift]{transform:translateY(calc(-1px * var(--mb-lift,0))) !important}' +
+        'html.mb-hide-reel-ui [data-mb-hid]{opacity:0 !important;pointer-events:none !important}' +
         'html.mb-hide-reel-ui [data-mb-fade]{opacity:0 !important}' +
         // fade / slide when hiding and showing; the marks stay ~0.45 s after showing so the way back animates too
         '[data-mb-hid],[data-mb-fade]{transition:opacity .3s ease}' +
@@ -131,13 +214,21 @@
         'transform-origin:var(--mb-ox,50%) var(--mb-oy,50%) !important;transition:transform .3s ease}' +
         // fit button: show the whole video (contain) or fill the screen (cover)
         'html.mb-fit-contain video{object-fit:contain !important}' +
-        'html.mb-fit-cover video{object-fit:cover !important}';
+        'html.mb-fit-cover video{object-fit:cover !important}' +
+        // icons hidden: the reels are centred on the whole screen, not under the (hidden) header strip
+        'html.mb-hide-reel-ui .vscroller{transform:translateY(calc(-1 * var(--mb-up,0px)));transition:transform .3s ease}';
     document.head.appendChild(style);
     // Button feedback: shrink while pressed, small bounce on tap.
-    style.textContent += '#mb-reel-hide,#mb-reel-fit,#mb-reel-auto,#mb-reel-audio,#materialbook-global-downloader{transition:transform .12s ease-out,background .2s,left .2s ease,top .2s ease}' +
-        '#mb-reel-hide:active,#mb-reel-fit:active,#mb-reel-auto:active,#mb-reel-audio:active{transform:scale(.82);background:rgba(255,255,255,.28) !important}';
+    style.textContent += '#mb-reel-hide,#mb-reel-fit,#mb-reel-auto,#mb-reel-audio,#materialbook-global-downloader{transition:transform .12s ease-out,background .2s,left .2s ease,top .2s ease,opacity .3s ease}' +
+        // closing the viewer (reel_transition.js): the buttons go with the animation, not after it
+        'html.mb-closing #mb-reel-hide,html.mb-closing #mb-reel-fit,html.mb-closing #mb-reel-auto,html.mb-closing #mb-reel-audio,html.mb-closing #materialbook-global-downloader,html.mb-closing #mb-reel-controls{opacity:0 !important;pointer-events:none !important;transition:opacity .12s ease !important}' +
+        // in the reel viewer the download button waits, unseen, for its place (see layoutBtns)
+        'html.mb-in-reels #materialbook-global-downloader:not([data-mb-placed]){opacity:0 !important}' +
+        // icons hidden: only the eye stays
+        'html.mb-hide-reel-ui #mb-reel-fit,html.mb-hide-reel-ui #mb-reel-auto,html.mb-hide-reel-ui #mb-reel-audio,html.mb-hide-reel-ui #materialbook-global-downloader{opacity:0 !important;pointer-events:none !important}' +
+        '#mb-reel-hide:active,#mb-reel-fit:active,#mb-reel-auto:active,#mb-reel-audio:active,#materialbook-global-downloader:active{transform:scale(.82);background:rgba(255,255,255,.28) !important}';
     document.addEventListener('click', (e) => {
-        const b = e.target.closest && e.target.closest('#mb-reel-hide,#mb-reel-fit,#mb-reel-auto,#mb-reel-audio');
+        const b = e.target.closest && e.target.closest(BTN_SEL);
         if (b) b.animate([{ transform: 'scale(.8)' }, { transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
     }, true);
 
@@ -176,7 +267,8 @@
     // A tap Facebook handles (it changed the state itself) is left alone, so it never toggles twice.
     document.addEventListener('click', (e) => {
         const v = e.target;
-        if (!hideOn || !e.isTrusted || !v || v.tagName !== 'VIDEO') return;
+        // (the click reel_gestures.js sends after holding a single tap back is not trusted either)
+        if (!hideOn || (!e.isTrusted && !window.__mbReplaying) || !v || v.tagName !== 'VIDEO') return;
         const was = v.paused;
         setTimeout(() => { if (v.paused === was) { if (was) v.play(); else v.pause(); } }, 80);
     }, true);
@@ -185,6 +277,23 @@
         let a = els[0];
         while (a && !els.every(e => a.contains(e))) a = a.parentElement;
         return a;
+    };
+
+    // Hides everything in a reel that has no video nor cover (the cover and what holds it show: it was hidden while this
+    // reel was the active one). For the reels that are not the active one.
+    const hideAroundPic = (nb) => {
+        const pic = nb.querySelector('video, img.img');
+        if (!pic) return;
+        const go = (node) => {
+            for (const c of node.children) {
+                if (c.tagName === 'CANVAS') continue;                       // the first frame of the reel (reel_transition.js)
+                if (c.contains(pic)) {
+                    c.removeAttribute('data-mb-hid'); c.removeAttribute('data-mb-fade');
+                    if (c !== pic) go(c);
+                } else if (!c.hasAttribute('data-mb-hid')) { c.removeAttribute('data-mb-fade'); c.setAttribute('data-mb-hid', ''); }
+            }
+        };
+        go(nb);
     };
 
     // Hide everything except the video and the swipe gesture: action icons, user and
@@ -221,11 +330,17 @@
             e.style.removeProperty('--mb-y');
             e.style.removeProperty('--mb-x');
         });
-        if (!hideOn) return;
+        if (!hideOn) { document.documentElement.style.removeProperty('--mb-up'); return; }
         // Desktop has no snappable box and its side rail lives outside the main area: start from
         // the page's top-level container (our own buttons hang off <body>, so they are not touched).
         const cont = v.closest('.vertically-snappable') || (window.isDesktopMode && window.isDesktopMode() && desktopRoot(v)) || v.parentElement;
         const iw = innerWidth, ih = innerHeight;
+        const list = cont.closest('.vscroller');
+        if (list) {
+            const o = list.getBoundingClientRect(), now = parseFloat(document.documentElement.style.getPropertyValue('--mb-up')) || 0;
+            // where the list's middle is without the shift, against the middle of the screen
+            document.documentElement.style.setProperty('--mb-up', Math.round(o.top + now + o.height / 2 - ih / 2) + 'px');
+        }
         // Facebook's thin progress bar (track + played part + buffer) stays visible,
         // like the video itself.
         const seekbox = cont.querySelector('.seekbar-container');
@@ -289,27 +404,17 @@
             const b = e.getBoundingClientRect();
             if (b.width > 0 && b.top < 0.2 * ih) hid(e);
         });
-        // top tab bar: hidden like the rest, and the reel list slides up over its strip and is
-        // scaled to fill the screen. Only a transform: the tab bar keeps its layout, because
-        // Facebook re-snaps the reels when a container resizes and never restores them properly.
-        document.querySelectorAll('[role="tablist"]').forEach(t => {
-            hid(t);
-            const wrap = t.parentElement;
-            const scroller = v.closest('.vscroller');
-            if (!wrap || holdsKept(wrap) || !scroller || scroller.hasAttribute('data-mb-scale') || scroller.offsetHeight <= 0) return;
-            const top = scroller.getBoundingClientRect().top;
-            const k = ih / scroller.offsetHeight;
-            if (top > 0 && k > 1.01 && k < 1.3) {
-                scroller.setAttribute('data-mb-scale', '');
-                scroller.style.setProperty('--mb-y', -top + 'px');
-                scroller.style.setProperty('--mb-k', k);
-            }
-        });
+        // top tab bar: hidden like the rest. The video is NOT enlarged to fill its strip (no zoom).
+        document.querySelectorAll('[role="tablist"]').forEach(hid);
         // desktop: enlarge the page so the video fills the screen (see zoomDesktop)
         if (window.isDesktopMode && window.isDesktopMode() && !v.closest('.vscroller')) zoomDesktop(v);
         // our own buttons
         document.querySelectorAll('button[aria-label="Download content"], button[aria-label="Copy image to clipboard"]').forEach(hid);
-        stale.forEach(e => { if (!cur.has(e)) { e.removeAttribute('data-mb-hid'); e.removeAttribute('data-mb-fade'); } });
+        // The reels beside this one slide in and out while it is swiped (slowly, the active one only changes halfway):
+        // their text and icons are hidden too, keeping the cover, or they show up for a moment.
+        [cont.previousElementSibling, cont.nextElementSibling].forEach(nb => nb && nb.classList.contains('vertically-snappable') && hideAroundPic(nb));
+        // Only this reel's old marks go: the reel that is sliding out keeps its own hidden.
+        stale.forEach(e => { if (!cur.has(e) && cont.contains(e)) { e.removeAttribute('data-mb-hid'); e.removeAttribute('data-mb-fade'); } });
     };
 
     const setFit = (mode) => {
@@ -399,37 +504,24 @@
         document.body.appendChild(hideBtn);
     };
 
-    // Thumbnail -> video: Facebook hides the poster (class "hidden") the moment the video starts
-    // playing, a hard cut. A copy of the poster stays on top for a moment and fades out instead.
-    new MutationObserver((muts) => {
-        const p = location.pathname;
-        if (p.indexOf('/reel/') !== 0 && p.indexOf('/videos/') === -1) return;
-        for (const m of muts) {
-            const img = m.target;
-            if (img.tagName !== 'IMG' || !img.classList.contains('hidden') || (m.oldValue || '').split(' ').indexOf('hidden') !== -1) continue;
-            const media = img.parentElement;
-            if (!media || !media.closest('.vertically-snappable')) continue;
-            // Resuming a paused video also hides the poster: only fade it when the video starts from the beginning.
-            const vid = media.closest('.vertically-snappable').querySelector('video');
-            if (vid && vid.currentTime > 0.5) continue;
-            const r = media.getBoundingClientRect();
-            if (!r.width || r.bottom <= 0 || r.top >= innerHeight) continue; // not the reel on screen
-            const copy = new Image();
-            copy.src = img.currentSrc || img.src;
-            copy.className = img.className.replace('hidden', '').trim();
-            copy.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;z-index:1;pointer-events:none;' +
-                'opacity:1;transition:opacity .3s ease-out';
-            media.appendChild(copy);
-            requestAnimationFrame(() => requestAnimationFrame(() => { copy.style.opacity = '0'; }));
-            setTimeout(() => copy.remove(), 500);
-        }
-    }).observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['class'], subtree: true });
+    // (No fade from the thumbnail to the video: the poster and the video have different proportions, so a copy of the
+    // poster fading out over the video showed the reel's text twice, offset, while the reel slid into place.)
 
     // New reel / re-rendered UI while the icons are hidden: mark it right away instead of waiting
     // for the next 250 ms tick, or its interface shows for a moment. Throttled, element nodes only.
     let remarkT = 0, lastRemark = 0;
     new MutationObserver((muts) => {
-        if (!hideOn || remarkT) return;
+        if (!hideOn) return;
+        // What Facebook adds to a reel is hidden at once, before the next paint (the pass below can be 120 ms away and
+        // the icons of a reel that slides in showed up); the pass then fixes what it got wrong, like the tap surface.
+        for (const m of muts) for (const n of m.addedNodes) {
+            if (n.nodeType !== 1 || (n.id && n.id.indexOf('mb-reel') === 0)) continue;
+            if (n.matches('.vertically-snappable')) { if (!n.querySelector('video')) hideAroundPic(n); continue; }
+            if (!n.closest('.vertically-snappable') || n.closest('[data-mb-hid],[data-mb-fade],.seekbar-container,#mb-reel-controls')) continue;
+            if (n.tagName === 'VIDEO' || n.tagName === 'IMG' || n.tagName === 'CANVAS' || n.querySelector('video, img.img, .seekbar-container')) continue;
+            n.setAttribute('data-mb-hid', '');
+        }
+        if (remarkT) return;
         if (!muts.some(m => [...m.addedNodes].some(n => n.nodeType === 1 && !(n.id && n.id.indexOf('mb-reel') === 0)))) return;
         remarkT = setTimeout(() => {
             remarkT = 0; lastRemark = Date.now();
@@ -440,8 +532,9 @@
 
     // Move the buttons: hold one to enter edit mode (they wiggle, a grid and Save/Cancel appear), drag
     // to another cell of the grid, Save keeps the layout. Positions are cells, not pixels.
-    // ponytail: the layout is stored in localStorage and ignored when the shown buttons change
-    // (a setting turned on or off), falling back to the default column; no per-set layouts.
+    // ponytail: the layout is stored in localStorage, one per orientation (portrait keeps the original key),
+    // and ignored when the shown buttons change (a setting turned on or off), falling back to the default
+    // column; no per-set layouts.
     const BTN_SEL = '#mb-reel-hide,#mb-reel-fit,#mb-reel-auto,#mb-reel-audio,#materialbook-global-downloader';
     const STEP = 48, HOLD = 450, LKEY = 'mbReelLayout', DLID = 'materialbook-global-downloader'; // DLID: download_content.js's button
     const es = (navigator.language || '').toLowerCase().indexOf('es') === 0;
@@ -449,7 +542,9 @@
     let grid = { x0: 0, y0: 0, rmin: 0 }, base = { top: 0, left: 0 }, lastX = 0, lastY = 0;
     let ui = null;
 
-    const savedLayout = () => { try { return JSON.parse(localStorage.getItem(LKEY)); } catch (_) { return null; } };
+    const lkey = () => innerWidth > innerHeight ? LKEY + 'Land' : LKEY;
+    let editKey = LKEY; // the orientation the edit started in, in case the phone rotates meanwhile
+    const savedLayout = () => { try { return JSON.parse(localStorage.getItem(lkey())); } catch (_) { return null; } };
     const cellOf = (el) => [Math.round((parseFloat(el.style.left) - grid.x0) / STEP), Math.round((parseFloat(el.style.top) - grid.y0) / STEP)];
     const limits = () => ({
         cmax: Math.max(0, Math.floor((innerWidth - 40 - grid.x0) / STEP)),
@@ -461,12 +556,26 @@
     };
     const place = (el, c) => { el.style.left = (grid.x0 + c[0] * STEP) + 'px'; el.style.top = (grid.y0 + c[1] * STEP) + 'px'; };
 
+    // Buttons that would sit over Facebook's own rail move up above it, as a column (the saved cells stay as they are).
+    function avoidRail(items) {
+        const o = overlay();
+        if (!o || !o.rail.length) return;
+        let l = 1e9, t = 1e9, r = -1e9, bt = -1e9;
+        o.rail.forEach(e => { const b = e.getBoundingClientRect(); l = Math.min(l, b.left); t = Math.min(t, b.top); r = Math.max(r, b.right); bt = Math.max(bt, b.bottom); });
+        // the buttons in the rail's column move up together by what the lowest one overlaps
+        const col = items.filter(b => { const x = parseFloat(b.style.left); return x + 40 > l - 6 && x < r + 6; });
+        let up = 0;
+        col.forEach(b => { const y = parseFloat(b.style.top); if (y + 40 > t - 6 && y < bt + 6) up = Math.max(up, y + 40 - (t - 6)); });
+        if (up) col.forEach(b => { b.style.top = Math.max(0, parseFloat(b.style.top) - up) + 'px'; });
+    }
+
     function layoutBtns(items, baseTop, baseLeft) {
         curItems = items; base = { top: baseTop, left: baseLeft };
         grid.x0 = baseLeft % STEP; grid.y0 = baseTop % STEP;
         grid.rmin = Math.round((baseTop - grid.y0) / STEP) - 1; // the row of the download button
         const col = Math.round((baseLeft - grid.x0) / STEP);
         let k = 0; // the download button keeps its row, the others stack under it
+        const firsts = [];
         const def = (b) => b.id === DLID ? [col, grid.rmin] : [col, grid.rmin + 1 + k++];
         const sv = savedLayout();
         const useSaved = sv && items.every(b => sv[b.id]);
@@ -474,9 +583,16 @@
         items.forEach((b) => {
             const d = def(b);
             if (drag && drag.el === b) return;
+            // The download button is shown by download_content.js at its own spot (top right) before this runs: its first placement
+            // jumps there (only its fade-in animates): a slide from the corner to the saved cell showed every time a video opened.
+            const first = b.id === DLID && !b.hasAttribute('data-mb-placed');
+            if (first) { b.style.transition = 'opacity .3s ease'; firsts.push(b); }
             place(b, lay && lay[b.id] ? lay[b.id] : d);
             if (b.id === DLID) { b.style.right = 'auto'; b.style.zIndex = '2147483000'; }
+            if (first) b.setAttribute('data-mb-placed', '');
         });
+        if (!editing && !drag && !hideOn) avoidRail(items);
+        firsts.forEach(b => { void b.offsetWidth; b.style.transition = ''; });
     }
 
     const buildEditUI = () => {
@@ -520,7 +636,7 @@
     const enterEdit = () => {
         if (editing) return;
         if (!ui || !ui.wrap.isConnected) buildEditUI();
-        draft = {};
+        draft = {}; editKey = lkey();
         curItems.forEach(b => { draft[b.id] = cellOf(b); });
         editing = true;
         ui.g.style.backgroundPosition = (grid.x0 - 4) + 'px ' + (grid.y0 - 4) + 'px'; // lines between the cells
@@ -531,7 +647,7 @@
     };
     function endEdit(save) {
         if (!editing) return;
-        if (save) { try { localStorage.setItem(LKEY, JSON.stringify(draft)); } catch (_) {} }
+        if (save) { try { localStorage.setItem(editKey, JSON.stringify(draft)); } catch (_) {} }
         editing = false; drag = null;
         document.documentElement.classList.remove('mb-edit');
         curItems.forEach(b => b.removeAttribute('data-mb-drag'));
@@ -591,6 +707,9 @@
     setInterval(() => {
         const path = location.pathname;
         const inReels = path.indexOf('/reel/') === 0 || path.indexOf('/videos/') !== -1 && !!document.querySelector('.vertically-snappable video');
+        // (a /videos/ address counts as the viewer for 1.5 s before its reel is drawn: reel_transition.js sets the class from the address)
+        const early = path.indexOf('/videos/') !== -1 && Date.now() - (window.__mbViewerAt || 0) < 1500;
+        document.documentElement.classList.toggle('mb-in-reels', inReels || early);
         const active = inReels ? activeVideo() : null;
 
 
@@ -620,12 +739,17 @@
             } else if (audioBtn) audioBtn.style.display = 'none';
             items.push(hideBtn);
             items.forEach(b => { if (b !== dlBtn) b.style.display = 'flex'; });
-            layoutBtns(items, baseTop, baseLeft);
+            // While the reels are being swiped (a finger on the screen, just lifted, or the reel not yet at rest) Facebook's
+            // own icons travel with the reel and pass behind our column: it stays where it is instead of stepping aside and back.
+            const it0 = active.closest('.vertically-snappable');
+            const T = window.__mbTouch;
+            const swiping = (T && (T.down || Date.now() - T.endAt < 700)) || (it0 && it0.parentElement && Math.abs(it0.getBoundingClientRect().top - it0.parentElement.getBoundingClientRect().top) > 3);
+            if (!(swiping && items.every(b => b.style.left))) layoutBtns(items, baseTop, baseLeft);
             markIcons(active);
         } else {
             if (editing) endEdit(false);
             const dl0 = document.getElementById(DLID);
-            if (dl0) { dl0.style.left = dl0.style.top = dl0.style.right = dl0.style.zIndex = ''; }
+            if (dl0) { dl0.style.left = dl0.style.top = dl0.style.right = dl0.style.zIndex = ''; dl0.removeAttribute('data-mb-placed'); }
             if (hideBtn) hideBtn.style.display = 'none';
             if (fitBtn) fitBtn.style.display = 'none';
             if (autoBtn) autoBtn.style.display = 'none';
@@ -642,15 +766,15 @@
 
         // seek bar for reels that don't have Facebook's own
         const v = path.indexOf('/reel/') === 0 ? active : null;
-        if (!v || !v.paused || !isFinite(v.duration) || v.duration <= 0 || hasNativeSeek()) {
-            if (bar) bar.style.display = 'none';
+        if (!v || !v.paused || !isFinite(v.duration) || v.duration <= 0 || (!hideOn && hasNativeSeek())) { // hide mode hides Facebook's time and volume row: our bar replaces its seek bar
+            showBar(false); lift(0);
             return;
         }
         if (!bar || !bar.isConnected) build();
         vid = v;
-        bar.style.display = 'block';
+        showBar(true); lift(bar.offsetHeight);
         time.textContent = fmt(v.currentTime) + ' / ' + fmt(v.duration);
-        if (!dragging) seek.value = Math.round(v.currentTime / v.duration * 1000);
+        if (!dragging) { seek.value = Math.round(v.currentTime / v.duration * 1000); seek.style.setProperty('--mb-p', seek.value / 10 + '%'); }
         muteBtn.innerHTML = svg(v.muted ? ICON.mute : ICON.vol);
     }, 250);
 })();

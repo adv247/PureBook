@@ -39,16 +39,8 @@
           );
 
           textSpans.forEach(textSpan => {
-            if (textSpan.textContent.trim() === '•') {
-              const suggestedPostContainer = textSpan.closest('div[data-tracking-duration-id]');
-              if (suggestedPostContainer) {
-                suggestedPostContainer.style.display = 'none';
-                const postGap = suggestedPostContainer.previousElementSibling;
-                if (postGap) {
-                  postGap.style.display = 'none';
-                }
-              }
-            }
+            // The "· Follow"/"• Join" separator is a bullet (U+2022) or a middle dot (U+00B7).
+            if (['•', '·'].includes(textSpan.textContent.trim())) window.hideFeedPost(textSpan);
           });
         }
 
