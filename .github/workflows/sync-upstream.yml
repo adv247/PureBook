@@ -1,0 +1,93 @@
+name: Sync upstream
+
+# Checks Ufoex/Faceboost every 6 hours (GitHub cannot trigger a workflow from another repo's push).
+# New upstream commits are merged (merge commit, never squash) into a sync/upstream-* branch and
+# a PR is opened for review. Conflicts open an issue instead. Nothing is merged into main here.
+#
+# PRs created with the default GITHUB_TOKEN do not start other workflows. To get CI on the sync PR,
+# add a repository secret SYNC_TOKEN (a personal access token with repo and workflow scope).
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Fetch upstream
+        id: fetch
+        run: |
+          git config user.name "purebook-sync-bot"
+          git config user.email "purebook-sync-bot@users.noreply.github.com"
+          git remote add upstream https://github.com/Ufoex/Faceboost.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date with upstream."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip when a sync PR is already open
+        id: open
+        if: steps.fetch.outputs.needed == 'true'
+        run: |
+          n=$(gh pr list --state open --json headRefName --jq '[.[] | select(.headRefName | startswith("sync/upstream-"))] | length')
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream
+        id: merge
+        if: steps.fetch.outputs.needed == 'true' && steps.open.outputs.count == '0'
+        run: |
+          branch="sync/upstream-$(date -u +%Y%m%d-%H%M)"
+          git checkout -b "$branch"
+          if git merge --no-ff upstream/main -m "chore: sync upstream Faceboost"; then
+            git push origin "$branch"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            echo "result=clean" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > conflicts.txt
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR
+        if: steps.merge.outputs.result == 'clean'
+        run: |
+          gh pr create --base main --head "${{ steps.merge.outputs.branch }}" \
+            --title "chore: sync upstream Faceboost" \
+            --body "Automatic merge of Ufoex/Faceboost main, no conflicts. Merge it with Create a merge commit, never squash, so the shared history is kept. Before merging: wait for CI, then check that the privacy scripts (link_privacy.js, anti_seen.js, anti_reload.js), the Lazada/Shopee link rules and the update source (adv247/PureBook) are still there. If CI did not start, close and reopen this PR, or add a SYNC_TOKEN secret."
+
+      - name: Report conflict
+        if: steps.merge.outputs.result == 'conflict'
+        run: |
+          existing=$(gh issue list --state open --search "Upstream sync conflict in:title" --json number --jq 'length')
+          if [ "$existing" = "0" ]; then
+            gh issue create \
+              --title "Upstream sync conflict" \
+              --body "Merging Ufoex/Faceboost main into main conflicts in these files:
+
+$(sed 's/^/- /' conflicts.txt)
+
+Resolve it by hand: git fetch upstream, git checkout -b sync/upstream-manual main, git merge upstream/main, fix the files, push and open a PR. Keep the PureBook rebrand, the update source and the privacy scripts; take the new upstream features."
+          else
+            echo "A conflict issue is already open."
+          fi
