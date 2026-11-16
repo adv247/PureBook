@@ -3,6 +3,8 @@
 <ins>**Changelog:**</ins>
 
 * Feature: Merged the improvements of the AstryxBook, dh6k, BraveBook and LiteBook forks (see FORK_CHANGES.md).
+* Feature: "Desktop orientation" setting (shown with the Desktop layout on): choose portrait (default), landscape or automatic (follows the device rotation), so a tablet can be used lying down. Experimental, it may cause errors.
+* Feature: The reel icon layout is saved separately for portrait and landscape, so each orientation keeps its own grid (your current layout stays as the portrait one).
 * Feature: Auto-scroll reels (setting): goes to the next reel when the current one ends; a button in the reel viewer pauses it.
 * Feature: Reel audio with the screen off (setting, off by default): adds an audio button to the reel viewer that keeps the reel playing when the screen turns off.
 * Feature: Check for updates on start (setting, on by default) and a Check now button in Settings; the dialog downloads the new APK and opens the system installer (Android asks once to allow installing from Faceboost).
@@ -52,6 +54,22 @@
 * Tweak: LICENSE updated from upstream.
 * Tweak: Settings dialog status bar icons follow its background.
 * Tweak: New applicationId `com.ufoex.materialbook`; runtime scripts are fetched from this repo.
+* Feature: Opening a reel from the feed now opens out from the card you tapped instead of replacing the feed at once; without a card (link, Reels tab) the viewer fades in.
+* Fix: The reel's cover no longer cuts to the video: the video fades in from its first frame, with no single frame of video before the fade. The reel you return to no longer keeps a frozen still over its video.
+* Feature: With the icons hidden only the eye stays; the download button now has the same press and tap animation as the others.
+* Feature: Leaving a reel (Back) closes it into the card it opened from while it fades out; opening fades in as it grows and now waits for the viewer to be drawn, so a slow load no longer skips the animation.
+* Tweak: The playback bar has the same translucent black as the caption bar, without the gradient.
+* Fix: Liking a reel while the playback bar is shown no longer drops the like button and the other icons to their original place.
+* Feature: Normal videos in the feed open and close with the same animation as the reels (growing from the video, shrinking back into it on Back, with a fade).
+* Fix: The download button no longer slides from the corner to its place when a video opens, and the app's buttons fade out with the closing animation instead of showing over the page.
+* Fix: Hide groups works again: the mobile site no longer renders a link to the group, so group posts are told by their avatar. Suggested posts with a middle dot (·) separator are hidden too.
+* Fix: Settings closed with Back (not the Apply button) applies a changed page setting; the page reloads with it.
+* Fix: Turning Desktop layout off no longer leaves the app on the desktop site (a cached redirect from m.facebook.com).
+* Fix: Back is no longer ignored while a page is still loading or busy: without an answer from the page in 1.5 s it steps back.
+* Fix: A share taken once is not taken again when Android recreates the app (font size or language change, process killed, opened from Recents).
+* Fix: No crash when the PiP window closes while the page reports the video state.
+* Tweak: The notification check follows redirects by hand and sends the Facebook login's cookies only to https pages of facebook.com.
+* Tweak: tools/canary.mjs: a live check of the app on the phone against today's Facebook (feed, group and suggested posts, reel viewer), run by hand before a release.
 
 ---
 
@@ -114,3 +132,21 @@ I REALLY hope you enjoy what has become the biggest project of my life! 🥹* Fi
 * Feature: Facebook's "better on the app" sheet is pressed away by itself, only when it comes up on its own and never right after a tap.
 * Fix: Picture-in-Picture stays on the video after a long screen lock (from AstryxBook).
 * Fix: Added the ProGuard rule that keeps WorkManager's database constructor, which R8 stripped in release builds (from AstryxBook).
+* Feature: A single tap on a reel waits a moment before pausing so a double tap (back, like, forward) never pauses the video first; pausing and resuming show an icon where you tapped, and the playback bar slides in and out.
+* Tweak: Lighter page scripts: the feed filters and the PiP detector batch their DOM checks once per frame, which helps slower devices.
+* Feature: With the playback bar of a paused reel showing, Facebook's like, comment and share buttons and the author and caption move up above it; the app's own reel buttons (download, hide icons...) no longer sit over Facebook's buttons.
+* Tweak: The playback bar of a paused reel is transparent with a thin white line like Facebook's own bar, and it now also shows when a neighbouring reel (off screen) has its own bar; the app's reel buttons move up together as a column when Facebook's buttons rise.
+* Fix: With the reel icons hidden, a single tap paused the video at once and played it again 0.3 s later; it now pauses (or resumes) once, after the wait for a possible double tap.
+* Fix: The app's playback bar is no longer drawn over Facebook's own seek bar: the detection looked at an invisible accessibility input instead of the bar Facebook draws (.seekbar-active), so both showed. Now it only appears when Facebook shows none.
+* Fix: With the reel icons hidden, a paused reel shows the playback bar again (time, full screen, volume) and Facebook's own seek bar is hidden, so there is only one line; a tap on a reel shows a dark circle with a pause or play icon where you tapped.
+* Fix: Reels no longer stay on a black screen with a spinner after a sponsored reel is hidden: an ad is not hidden while it is the last reel loaded, the hidden ad no longer pauses the reels that follow it, and an ad hidden while on screen moves to the neighbouring reel.
+* Fix: The reel cross-fade also works in reel viewers opened from a /videos/ link, not only /reel/ ones.
+* Fix: Hiding ads, suggested posts, people you may know, reels and groups works again now that Home draws each post as separate rows.
+* Fix: Only a real connection error replaces the page with the network error dialog.
+* Tweak: Material You and AMOLED Black restyle only what changed instead of the whole page on every change.
+* Feature: Reels fade by position while you swipe: the reel that leaves goes dark as it moves away and the one that comes in is revealed from dark, with one curve for both so the tone does not jump where they cross.
+* Feature: A reel you leave keeps its last video frame, paused and in place (behind its name and caption), until its video plays again, so swiping back never shows it empty. The frame is kept while the list moves and put in the reel when Facebook moves the video to another one.
+* Feature: When a reel's video starts from the beginning, its cover fades out over it, placed in the reel so it moves with it and drawn where the video's picture is.
+* Feature: With the reel icons hidden the video is centred on the whole screen, not under the hidden header strip.
+* Fix: With the icons hidden, the description and icons of the reel that was leaving came back for a moment when you swiped slowly, and the ones of the reel coming in showed up: the neighbouring reels are hidden too and what Facebook adds to a reel is hidden before it is painted.
+* Fix: The cover of a reel is no longer shown on top of the video, which made the reel's text show twice, offset, while it slid into place.

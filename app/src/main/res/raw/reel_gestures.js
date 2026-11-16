@@ -69,6 +69,8 @@
     const ICON = {
         up: ['M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z', '#1877f2'],
         down: ['M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z', '#cfd2d6'],
+        pause: ['M6 19h4V5H6v14zm8-14v14h4V5h-4z', '#ffffff'],
+        play: ['M8 5v14l11-7z', '#ffffff'],
         fwd: ['M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z', '#ffffff'],
         back: ['M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z', '#ffffff']
     };
@@ -90,6 +92,23 @@
             { transform: 'translateX(' + dx + 'px) scale(1.1)', opacity: 0 }
         ], { duration: 800, easing: 'ease-out' }).onfinish = () => el.remove();
     };
+    // After a single tap: a dark circle with a pause or play icon, where the finger was.
+    const popState = (v, tx, ty) => {
+        const x = Math.max(34, Math.min(innerWidth - 34, tx));
+        const y = Math.max(34, Math.min(innerHeight - 34, ty));
+        const el = document.createElement('div');
+        el.id = 'mb-reel-anim';
+        el.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;width:68px;height:68px;margin:-34px 0 0 -34px;border-radius:50%;' +
+            'background:rgba(0,0,0,.55);z-index:2147483000;pointer-events:none;display:flex;align-items:center;justify-content:center';
+        el.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff"><path d="' + ICON[v.paused ? 'pause' : 'play'][0] + '"/></svg>';
+        document.body.appendChild(el);
+        el.animate([
+            { transform: 'scale(.6)', opacity: 0 },
+            { transform: 'scale(1.08)', opacity: 1, offset: .25 },
+            { transform: 'scale(1)', opacity: 1, offset: .6 },
+            { transform: 'scale(1.2)', opacity: 0 }
+        ], { duration: 700, easing: 'ease-out' }).onfinish = () => el.remove();
+    };
     // Double tap in the middle: like, or take the like back when the reel already has one.
     const likeReel = (x, y) => {
         const b = likeButton();
@@ -100,7 +119,21 @@
     // Which third of the screen: -1 left (back), 0 middle (like), 1 right (forward).
     const zoneOf = (x) => x < innerWidth / 3 ? -1 : x > innerWidth * 2 / 3 ? 1 : 0;
 
-    let st = null, lastTap = null, swallowUntil = 0;
+    let st = null, lastTap = null, swallowUntil = 0, replaying = false;
+
+    // A single tap is held back for DOUBLE_MS so a double tap never pauses the video first: Facebook
+    // gets the click afterwards, only when no second tap came.
+    const replayTap = (tap) => {
+        clearTimeout(tap.timer);
+        if (!inReel() || !document.contains(tap.target)) return;
+        const was = tap.v.paused;
+        replaying = window.__mbReplaying = true; // reel_controls.js's hide-mode tap fix takes this one
+        try { tap.target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); }
+        finally { replaying = window.__mbReplaying = false; }
+        // Show what the tap did once Facebook (or reel_controls.js's fallback, 80 ms) has toggled it.
+        // Only when it did toggle: a tap on the caption or any other control leaves playback alone, no icon.
+        setTimeout(() => { if (tap.v.paused !== was) popState(tap.v, tap.x, tap.y); }, 120);
+    };
 
     const onUI = (t) => !!(t.closest && t.closest('button,a,input,[role=button],[role=link],[role=slider],#mb-reel-controls,[id^=mb-reel-]'));
 
@@ -111,7 +144,7 @@
         const t = e.touches[0];
         // Starting at a screen edge = the system back gesture: it takes the touch without sending moves.
         if (t.clientX < EDGE || t.clientX > innerWidth - EDGE) { st = null; return; }
-        st = { x: t.clientX, y: t.clientY, t0: Date.now(), v, held: false, moved: false, target: e.target, wasPaused: v.paused };
+        st = { x: t.clientX, y: t.clientY, t0: Date.now(), v, held: false, moved: false, target: e.target };
         st.timer = setTimeout(() => {
             if (!st || st.moved) return;
             st.held = true;
@@ -157,19 +190,20 @@
         const side = zoneOf(s.x);
         if (lastTap && now - lastTap.t < DOUBLE_MS && lastTap.side === side) {
             const v = s.v;
+            clearTimeout(lastTap.timer);
             if (side === 0) likeReel(s.x, s.y);
             else {
                 if (isFinite(v.duration)) v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + side * cfg.skip));
                 pop(s.x, s.y, side < 0 ? 'back' : 'fwd', cfg.skip + ' s', side * 40);
             }
-            // the first tap already toggled play/pause: put it back
-            const was = lastTap.wasPaused;
-            setTimeout(() => { if (v.paused !== was) was ? v.pause() : v.play(); }, 80);
             swallowUntil = now + 400;
             lastTap = null;
             e.preventDefault();
         } else {
-            lastTap = { t: now, side, wasPaused: s.wasPaused };
+            if (lastTap) replayTap(lastTap); // a tap elsewhere: the earlier one was a single tap
+            const tap = lastTap = { t: now, side, target: s.target, x: s.x, y: s.y, v: s.v };
+            tap.timer = setTimeout(() => { if (lastTap === tap) lastTap = null; replayTap(tap); }, DOUBLE_MS);
+            swallowUntil = now + 150; // the click that follows this touchend is replayed later
         }
     }, { capture: true, passive: false });
 
@@ -184,8 +218,10 @@
     }, { capture: true, passive: true });
 
     // The click that follows a hold / double tap must not pause the video or open anything.
-    ['click', 'pointerup', 'mouseup'].forEach(n => document.addEventListener(n, (e) => {
-        if (Date.now() < swallowUntil) { e.preventDefault(); e.stopPropagation(); }
+    // On window, before every listener of the page and of the other scripts (hide mode's tap fix in
+    // reel_controls.js would toggle the video at once): stopImmediatePropagation, not stopPropagation.
+    ['click', 'pointerup', 'mouseup'].forEach(n => window.addEventListener(n, (e) => {
+        if (!replaying && Date.now() < swallowUntil) { e.preventDefault(); e.stopImmediatePropagation(); }
     }, true));
     document.addEventListener('contextmenu', (e) => { if (inReel() && !onUI(e.target)) e.preventDefault(); }, true);
 })();

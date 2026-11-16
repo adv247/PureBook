@@ -50,6 +50,7 @@ import com.eepiemi.materialbook.ui.components.NetworkErrorDialog
 import com.eepiemi.materialbook.ui.components.settings.SettingsDialog
 import com.eepiemi.materialbook.ui.viewmodel.MainViewModel
 import com.eepiemi.materialbook.ui.viewmodel.SettingsViewModel
+import com.eepiemi.materialbook.utils.isConnectionError
 import com.eepiemi.materialbook.utils.DESKTOP_USER_AGENT
 import com.eepiemi.materialbook.utils.BraveBlockList
 import com.eepiemi.materialbook.utils.ExternalRequestInterceptor
@@ -82,11 +83,14 @@ import com.eepiemi.materialbook.audio.PipHandback
 import com.eepiemi.materialbook.utils.effectiveDesktop
 import com.eepiemi.materialbook.utils.fbRedirectSanitizer
 import com.eepiemi.materialbook.utils.messagesDesktopUrl
+import com.eepiemi.materialbook.utils.mobileSiteUrl
 import com.eepiemi.materialbook.utils.openMessenger
 import com.eepiemi.materialbook.utils.openExternalUrl
 import com.eepiemi.materialbook.utils.rememberAutoDesktop
 import com.eepiemi.materialbook.utils.rememberImeHeight
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 internal const val PIP_TOGGLE_JS = """
 (function() {
@@ -716,6 +720,8 @@ fun MaterialbookWebView(
     val isDesktop by settingsVM.desktopLayout.collectAsState()
     val isAutoDesktop = rememberAutoDesktop()
     val isEffectiveDesktop = effectiveDesktop(isDesktop, isAutoDesktop)
+    val desktopOrientation by settingsVM.desktopOrientation.collectAsState()
+    val browsingOrientation = if (isEffectiveDesktop) desktopOrientation else "portrait"
 
     // A link into another app (not web, email or phone) waits here for the user's OK.
     var pendingExternalLink by remember { mutableStateOf<String?>(null) }
@@ -995,23 +1001,30 @@ fun MaterialbookWebView(
     // Leaving the app from the feed sends it to the background, like Home does: finishing dropped
     // the WebView, so coming back reloaded the feed from the top.
     val leaveApp = { activity?.moveTaskToBack(true); Unit }
+    val backScope = rememberCoroutineScope()
     BackHandler {
         if (exitScroll) {
             leaveApp()
         } else {
+            // Back asks the page first (scripts.js backHandlerNB). A page whose scripts have not run yet answers "null", and
+            // a busy renderer answers late or never: Back was ignored then. Any answer that is not the page's own handling
+            // ("true", "exit", "scrolling") steps back, and without an answer in 1.5 s it steps back anyway (a late answer
+            // is dropped). Found in AstryxBook.
+            var answered = false
+            val stepBack = { if (navigator.canGoBack) navigator.navigateBack() else leaveApp() }
             navigator.evaluateJavaScript("backHandlerNB();") {
-                val backHandled = it.removeSurrounding("\"")
-                when (backHandled) {
-                    "false" -> {
-                        if (navigator.canGoBack) {
-                            navigator.navigateBack()
-                        } else {
-                            leaveApp()
-                        }
-                    }
+                if (answered) return@evaluateJavaScript
+                answered = true
+                when (it.removeSurrounding("\"")) {
+                    "true" -> Unit
                     "exit" -> leaveApp()
                     "scrolling" -> exitScroll = true
+                    else -> stepBack()
                 }
+            }
+            backScope.launch {
+                delay(1500)
+                if (!answered) { answered = true; stepBack() }
             }
         }
     }
@@ -1033,7 +1046,9 @@ fun MaterialbookWebView(
     }
 
     var isLoading by rememberSaveable { mutableStateOf(true) }
-    val isError = state.errorsForCurrentRequest.lastOrNull()?.isFromMainFrame == true
+    // Only a page Facebook can't be reached for (isConnectionError): the error dialog takes the
+    // page's place, WebView and all.
+    val isError = state.errorsForCurrentRequest.lastOrNull()?.let { it.isFromMainFrame && isConnectionError(it.code) } == true
 
     val viewModel: MainViewModel = viewModel {
         MainViewModel(
@@ -1122,7 +1137,10 @@ fun MaterialbookWebView(
                     it.requestedOrientation =
                         appOrientation(
                             isFullscreen = false,
-                            isMessagesLayerOpen = messagesLayerUrl != null
+                            isMessagesLayerOpen = messagesLayerUrl != null,
+                            browsingOrientation =
+                                if (effectiveDesktop(settingsVM.desktopLayout.value, isAutoDesktop))
+                                    settingsVM.desktopOrientation.value else "portrait"
                         )
                 }
                 Log.d("AstryxbookPiP", "HTML5 fullscreen: hidden")
@@ -1201,6 +1219,14 @@ fun MaterialbookWebView(
                 navigator.loadUrl("https://m.facebook.com/")
             },
             onDismiss = {
+                // Closed with Back or the arrow, a change that needs the page reloaded applies as with the Apply button:
+                // the page kept its old scripts until the app restarted, and Settings opened again took the new values
+                // as already applied. (The Apply button reloads first, so it finds nothing changed here.)
+                if (viewModel.pageSettingsChanged(settingsVM)) {
+                    isLoading = true
+                    viewModel.refresh(resources = resources, settings = settingsVM)
+                    navigator.reload()
+                }
                 setWindow(settingsVM.immersiveMode.value)
                 viewModel.setThemeColor(originalColor.value)
                 settingsToggle = false
@@ -1255,18 +1281,34 @@ fun MaterialbookWebView(
         runCatching { state.nativeWebView }.getOrNull()?.settings?.userAgentString = userAgent
     }
 
+    // The mobile view on the desktop site: a permanent redirect m.facebook.com gave a desktop browser (Desktop
+    // layout, the Messages layer), cached and followed again (mobileSiteUrl). The cache goes and the page opens
+    // on the mobile site, once per address.
+    var leftDesktopSiteFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.loadingState, isEffectiveDesktop) {
+        if (isEffectiveDesktop || state.loadingState !is LoadingState.Finished) return@LaunchedEffect
+        val webView = runCatching { state.nativeWebView }.getOrNull() ?: return@LaunchedEffect
+        val mobile = mobileSiteUrl(webView.url) ?: return@LaunchedEffect
+        if (mobile == leftDesktopSiteFor) return@LaunchedEffect
+        leftDesktopSiteFor = mobile
+        Log.d("Faceboost", "mobile view on the desktop site: cache cleared, opening the mobile page")
+        webView.clearCache(true)
+        navigator.loadUrl(mobile)
+    }
+
     // The page underneath keeps running while the Messages layer is open: pause its videos
     // so a playing reel doesn't go on behind the chat.
     // While it is open the phone may rotate (see appOrientation) and the feed underneath reflows,
     // so its scroll position is noted on open and put back after the rotation back.
     val isMessagesLayerOpen = messagesLayerUrl != null
-    LaunchedEffect(isMessagesLayerOpen) {
+    LaunchedEffect(isMessagesLayerOpen, browsingOrientation) {
         // While fullscreen, the fullscreen host owns the orientation (and resets it on exit).
         if (!isFullscreen) {
             activity?.let {
                 it.requestedOrientation = appOrientation(
                     isFullscreen = false,
-                    isMessagesLayerOpen = isMessagesLayerOpen
+                    isMessagesLayerOpen = isMessagesLayerOpen,
+                    browsingOrientation = browsingOrientation
                 )
             }
         }
